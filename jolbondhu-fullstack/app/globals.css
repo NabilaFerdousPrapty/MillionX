@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+:root {
+  --background: 120 40% 98%;
+  --foreground: 160 70% 15%;
+  --primary: 145 70% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 45 90% 50%;
+  --secondary-foreground: 0 0% 20%;
+  --accent: 200 80% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 145 30% 85%;
+  --input: 145 30% 95%;
+  --ring: 145 70% 35%;
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {}
+
+body {
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%234ade80' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E");
+
+  color: var(--foreground);
+  font-family: Arial,
+    Helvetica,
+    sans-serif;
+}
+
+@layer components {
+  .bangla-text {
+    font-family: 'Noto Sans Bengali', 'Kalpurush', sans-serif;
+  }
+
+  .bangladeshi-card {
+    @apply bg-white/95 backdrop-blur-sm border-2 border-green-100 rounded-2xl shadow-lg;
+    box-shadow: 0 8px 32px rgba(34, 139, 34, 0.1);
+  }
+
+  .jute-texture {
+    background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23228b22' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+  }
+
+  .rice-field-bg {
+    background: linear-gradient(135deg,
+        rgba(34, 139, 34, 0.1) 0%,
+        rgba(50, 205, 50, 0.08) 25%,
+        rgba(144, 238, 144, 0.06) 50%,
+        rgba(152, 251, 152, 0.04) 75%,
+        transparent 100%);
+  }
+
+  /* ঝুঁকি গ্রেডিয়েন্ট */
+  .risk-low {
+    background: linear-gradient(135deg, #22c55e 0%, #4ade80 100%);
+  }
+
+  .risk-medium {
+    background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  }
+
+  .risk-high {
+    background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+  }
+
+  .risk-severe {
+    background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%);
+  }
+
+  /* নদী/পানি থিম */
+  .water-wave {
+    background: linear-gradient(45deg,
+        rgba(59, 130, 246, 0.1) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(59, 130, 246, 0.1) 50%,
+        rgba(59, 130, 246, 0.1) 75%,
+        transparent 75%,
+        transparent);
+    background-size: 20px 20px;
+  }
+
+  /* কৃষক বন্ধুত্বপূর্ণ বাটন */
+  .farmer-button {
+    @apply px-6 py-3 rounded-xl font-medium transition-all duration-300;
+    background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+  }
+
+  .farmer-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+  }
+
+  /* বাংলাদেশের পতাকার রঙ */
+  .bd-flag-red {
+    @apply bg-red-600;
+  }
+
+  .bd-flag-green {
+    @apply bg-green-600;
+  }
+}
