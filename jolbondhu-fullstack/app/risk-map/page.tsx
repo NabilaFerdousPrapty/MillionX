@@ -1,20 +1,64 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   MapPin,
   Layers,
   Filter,
   Download,
-  ZoomIn,
-  ZoomOut,
   AlertTriangle,
   CloudRain,
   Droplets,
 } from "lucide-react";
-import { Legend } from "recharts";
+import dynamic from "next/dynamic";
 
-const বাংলাদেশের_জেলাসমূহ = [
+// React Leaflet কম্পোনেন্টগুলো ডাইনামিকভাবে ইমপোর্ট করুন (SSR এড়ানোর জন্য)
+const MapContainer = dynamic(
+  () => import("react-leaflet").then((mod) => mod.MapContainer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[600px] bg-gray-100 animate-pulse rounded-xl"></div>
+    ),
+  }
+);
+
+const TileLayer = dynamic(
+  () => import("react-leaflet").then((mod) => mod.TileLayer),
+  { ssr: false }
+);
+
+const Marker = dynamic(
+  () => import("react-leaflet").then((mod) => mod.Marker),
+  { ssr: false }
+);
+
+const Popup = dynamic(() => import("react-leaflet").then((mod) => mod.Popup), {
+  ssr: false,
+});
+
+const GeoJSON = dynamic(
+  () => import("react-leaflet").then((mod) => mod.GeoJSON),
+  { ssr: false }
+);
+
+// Types
+interface District {
+  name: string;
+  risk: "নিম্ন" | "মধ্যম" | "উচ্চ" | "অতি উচ্চ";
+  lat: number;
+  lon: number;
+}
+
+interface RainfallData {
+  current: number;
+  hourly: number;
+  forecast: number;
+  temperature: number;
+  humidity: number;
+}
+
+const বাংলাদেশের_জেলাসমূহ: District[] = [
   { name: "সিরাজগঞ্জ", risk: "উচ্চ", lat: 24.4539, lon: 89.7083 },
   { name: "কুড়িগ্রাম", risk: "অতি উচ্চ", lat: 25.8054, lon: 89.6362 },
   { name: "গাইবান্ধা", risk: "উচ্চ", lat: 25.3287, lon: 89.5281 },
@@ -39,28 +83,112 @@ const বাংলাদেশের_জেলাসমূহ = [
 ];
 
 export default function RiskMapPage() {
-  const [selectedDistrict, setSelectedDistrict] = useState("সিরাজগঞ্জ");
-  const [zoomLevel, setZoomLevel] = useState(100);
-  const [layer, setLayer] = useState("ঝুঁকি_মানচিত্র");
-  const [timeFilter, setTimeFilter] = useState("আগামী_৭_দিন");
+  const [selectedDistrict, setSelectedDistrict] = useState<string>("সিরাজগঞ্জ");
+  const [zoomLevel, setZoomLevel] = useState<number>(7);
+  const [layer, setLayer] = useState<string>("ঝুঁকি_মানচিত্র");
+  const [timeFilter, setTimeFilter] = useState<string>("আগামী ৭ দিন");
+  const [mapReady, setMapReady] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [rainfallData, setRainfallData] = useState<RainfallData | null>(null);
+  const [Leaflet, setLeaflet] = useState<any>(null);
 
   const ঝুঁকি_রঙ = {
-    নিম্ন: "bg-emerald-500",
-    মধ্যম: "bg-amber-500",
-    উচ্চ: "bg-orange-500",
-    "অতি উচ্চ": "bg-red-600",
+    নিম্ন: "#10b981",
+    মধ্যম: "#f59e0b",
+    উচ্চ: "#f97316",
+    "অতি উচ্চ": "#dc2626",
   };
 
-  const ঝুঁকি_বর্ডার = {
-    নিম্ন: "border-emerald-200",
-    মধ্যম: "border-amber-200",
-    উচ্চ: "border-orange-200",
-    "অতি উচ্চ": "border-red-200",
-  };
+  // Leaflet dynamic load
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      import("leaflet").then((L) => {
+        // Fix Leaflet marker icons
+        delete (L.default.Icon.Default.prototype as any)._getIconUrl;
+        L.default.Icon.Default.mergeOptions({
+          iconRetinaUrl: "/leaflet/images/marker-icon-2x.png",
+          iconUrl: "/leaflet/images/marker-icon.png",
+          shadowUrl: "/leaflet/images/marker-shadow.png",
+        });
+        setLeaflet(L.default);
+        setMapReady(true);
+      });
+    }
+  }, []);
+
+  const ঝুঁকি_আইকন = useMemo(() => {
+    if (!Leaflet) return {};
+
+    const createCustomIcon = (color: string, text: string) => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+        <circle cx="24" cy="24" r="20" fill="${color}" stroke="white" stroke-width="3"/>
+        <path fill="white" d="M24 14a8 8 0 0 1 8 8c0 4.418-7.635 13.247-7.635 13.247S16 26.418 16 22a8 8 0 0 1 8-8zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+        <circle cx="34" cy="14" r="6" fill="white" stroke="${color}" stroke-width="2"/>
+        <text x="34" y="17" text-anchor="middle" font-size="10" font-weight="bold" fill="${color}">${text}</text>
+      </svg>`;
+
+      return Leaflet.icon({
+        iconUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40],
+      });
+    };
+
+    return {
+      নিম্ন: createCustomIcon("#10b981", "ন"),
+      মধ্যম: createCustomIcon("#f59e0b", "ম"),
+      উচ্চ: createCustomIcon("#f97316", "উ"),
+      "অতি উচ্চ": createCustomIcon("#dc2626", "!!"),
+    };
+  }, [Leaflet]);
 
   const নির্বাচিত_জেলা = বাংলাদেশের_জেলাসমূহ.find(
     (d) => d.name === selectedDistrict
   );
+
+  // বাংলাদেশের জিওজেসন ডেটা
+  const বাংলাদেশ_সীমানা = {
+    type: "FeatureCollection" as const,
+    features: [
+      {
+        type: "Feature" as const,
+        properties: { name: "বাংলাদেশ" },
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [
+            [
+              [88.0464, 26.6314],
+              [92.6727, 26.4465],
+              [92.3057, 20.786],
+              [88.8881, 21.7022],
+              [88.0464, 26.6314],
+            ],
+          ],
+        },
+      },
+    ],
+  };
+
+  // বাংলাদেশ সীমানা স্টাইল
+  const দেশ_সীমানা_স্টাইল = {
+    fillColor: "#f0f9ff",
+    weight: 2,
+    opacity: 1,
+    color: "#0ea5e9",
+    fillOpacity: 0.1,
+  };
+
+  if (!mapReady) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-green-700">মানচিত্র লোড হচ্ছে...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-blue-50">
@@ -91,7 +219,7 @@ export default function RiskMapPage() {
                     সময় ফিল্টার
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {["আজ", "আগামী_৩_দিন", "আগামী_৭_দিন", "এই_মাস"].map(
+                    {["আজ", "আগামী ৩ দিন", "আগামী ৭ দিন", "এই মাস"].map(
                       (time) => (
                         <button
                           key={time}
@@ -99,10 +227,10 @@ export default function RiskMapPage() {
                           className={`px-4 py-2 rounded-lg border-2 ${
                             timeFilter === time
                               ? "border-blue-500 bg-blue-50 text-blue-700"
-                              : "border-green-200 text-green-700"
-                          }`}
+                              : "border-green-200 text-green-700 hover:border-green-300"
+                          } transition-colors`}
                         >
-                          {time.replace(/_/g, " ")}
+                          {time}
                         </button>
                       )
                     )}
@@ -127,65 +255,34 @@ export default function RiskMapPage() {
                         label: "নদীর পানি স্তর",
                         icon: Droplets,
                       },
-                      {
-                        id: "ফসল_ক্ষতি",
-                        label: "ফসল ক্ষতি পূর্বাভাস",
-                        icon: Layers,
-                      },
                     ].map((layerItem) => (
                       <button
                         key={layerItem.id}
                         onClick={() => setLayer(layerItem.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border-2 ${
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all ${
                           layer === layerItem.id
                             ? "border-green-500 bg-green-50"
-                            : "border-green-200"
+                            : "border-green-200 hover:border-green-300"
                         }`}
                       >
-                        <layerItem.icon className="h-5 w-5 text-green-600" />
-                        <span className="text-green-800">
+                        <layerItem.icon
+                          className={`h-5 w-5 ${
+                            layer === layerItem.id
+                              ? "text-green-600"
+                              : "text-green-500"
+                          }`}
+                        />
+                        <span
+                          className={`${
+                            layer === layerItem.id
+                              ? "text-green-900 font-medium"
+                              : "text-green-700"
+                          }`}
+                        >
                           {layerItem.label}
                         </span>
                       </button>
                     ))}
-                  </div>
-                </div>
-
-                {/* জুম কন্ট্রোল */}
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-green-700">
-                      জুম স্তর
-                    </span>
-                    <span className="font-bold text-green-900">
-                      {zoomLevel}%
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setZoomLevel(Math.max(50, zoomLevel - 10))}
-                      className="p-2 bg-white border-2 border-green-200 rounded-lg hover:bg-green-50"
-                    >
-                      <ZoomOut className="h-5 w-5 text-green-600" />
-                    </button>
-                    <div className="flex-1">
-                      <input
-                        type="range"
-                        min="50"
-                        max="200"
-                        value={zoomLevel}
-                        onChange={(e) => setZoomLevel(parseInt(e.target.value))}
-                        className="w-full h-2 bg-green-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-600"
-                      />
-                    </div>
-                    <button
-                      onClick={() =>
-                        setZoomLevel(Math.min(200, zoomLevel + 10))
-                      }
-                      className="p-2 bg-white border-2 border-green-200 rounded-lg hover:bg-green-50"
-                    >
-                      <ZoomIn className="h-5 w-5 text-green-600" />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -196,26 +293,22 @@ export default function RiskMapPage() {
               <div className="bangladeshi-card p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div
-                    className={`p-2 ${
-                      ঝুঁকি_রঙ[নির্বাচিত_জেলা.risk as keyof typeof ঝুঁকি_রঙ]
-                    } rounded-lg`}
+                    className="p-3 rounded-lg"
+                    style={{
+                      backgroundColor: ঝুঁকি_রঙ[নির্বাচিত_জেলা.risk],
+                    }}
                   >
-                    <AlertTriangle className="h-5 w-5 text-white" />
+                    <AlertTriangle className="h-6 w-6 text-white" />
                   </div>
                   <div>
                     <h3 className="font-bold text-green-900 text-lg">
                       {নির্বাচিত_জেলা.name}
                     </h3>
                     <p
-                      className={`text-sm font-medium ${
-                        নির্বাচিত_জেলা.risk === "অতি উচ্চ"
-                          ? "text-red-700"
-                          : নির্বাচিত_জেলা.risk === "উচ্চ"
-                          ? "text-orange-700"
-                          : নির্বাচিত_জেলা.risk === "মধ্যম"
-                          ? "text-amber-700"
-                          : "text-emerald-700"
-                      }`}
+                      className="text-sm font-medium"
+                      style={{
+                        color: ঝুঁকি_রঙ[নির্বাচিত_জেলা.risk],
+                      }}
                     >
                       {নির্বাচিত_জেলা.risk} ঝুঁকি
                     </p>
@@ -260,38 +353,42 @@ export default function RiskMapPage() {
             {/* লিজেন্ড */}
             <div className="bangladeshi-card p-6">
               <div className="flex items-center gap-2 mb-4">
-                <Legend className="h-5 w-5 text-green-600" />
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Layers className="h-5 w-5 text-green-600" />
+                </div>
                 <h3 className="font-bold text-green-900">ঝুঁকি নির্দেশিকা</h3>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {[
                   {
-                    level: "নিম্ন",
+                    level: "নিম্ন" as const,
                     color: "bg-emerald-500",
                     desc: "স্বাভাবিক অবস্থা",
                   },
                   {
-                    level: "মধ্যম",
+                    level: "মধ্যম" as const,
                     color: "bg-amber-500",
                     desc: "সতর্কতা প্রয়োজন",
                   },
                   {
-                    level: "উচ্চ",
+                    level: "উচ্চ" as const,
                     color: "bg-orange-500",
                     desc: "জরুরি ব্যবস্থা প্রয়োজন",
                   },
                   {
-                    level: "অতি উচ্চ",
+                    level: "অতি উচ্চ" as const,
                     color: "bg-red-600",
                     desc: "তাৎক্ষণিক ব্যবস্থা প্রয়োজন",
                   },
                 ].map((item) => (
-                  <div key={item.level} className="flex items-center gap-3">
-                    <div className={`w-4 h-4 ${item.color} rounded`}></div>
+                  <div key={item.level} className="flex items-start gap-3">
+                    <div className={`w-4 h-4 ${item.color} rounded mt-1`}></div>
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-green-800">
-                        {item.level}
-                      </span>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-green-800">
+                          {item.level}
+                        </span>
+                      </div>
                       <p className="text-xs text-green-600">{item.desc}</p>
                     </div>
                   </div>
@@ -318,93 +415,103 @@ export default function RiskMapPage() {
                 </div>
               </div>
 
-              {/* মানচিত্র কন্টেইনার */}
-              <div className="relative bg-gradient-to-br from-blue-50 to-cyan-100 rounded-2xl border-4 border-green-300 h-[600px] overflow-hidden">
-                {/* সিমুলেটেড মানচিত্র */}
-                <div className="absolute inset-0 water-wave opacity-20"></div>
+              {/* Leaflet মানচিত্র */}
+              <div className="relative rounded-2xl border-2 border-green-300 overflow-hidden h-[600px]">
+                <MapContainer
+                  center={[23.685, 90.3563]}
+                  zoom={zoomLevel}
+                  style={{ height: "100%", width: "100%" }}
+                  className="rounded-xl"
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
 
-                {/* বাংলাদেশের আউটলাইন */}
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 h-4/5 border-2 border-green-500 rounded-3xl"></div>
+                  <GeoJSON
+                    data={বাংলাদেশ_সীমানা as any}
+                    style={দেশ_সীমানা_স্টাইল}
+                  />
 
-                {/* নদীসমূহ */}
-                <div className="absolute top-1/4 left-1/4 w-1/2 h-8 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full opacity-60"></div>
-                <div className="absolute top-2/3 left-1/3 w-1/3 h-6 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full opacity-60"></div>
-
-                {/* জেলা পয়েন্টস */}
-                {বাংলাদেশের_জেলাসমূহ.map((জেলা, index) => {
-                  // জেলার অবস্থান সিমুলেট করা
-                  const top = 20 + Math.random() * 60;
-                  const left = 20 + Math.random() * 60;
-
-                  return (
-                    <button
-                      key={জেলা.name}
-                      onClick={() => setSelectedDistrict(জেলা.name)}
-                      className={`absolute transform -translate-x-1/2 -translate-y-1/2 ${
-                        selectedDistrict === জেলা.name ? "z-10" : "z-0"
-                      }`}
-                    >
-                      <div className="relative">
-                        <div
-                          className={`absolute inset-0 ${
-                            ঝুঁকি_রঙ[জেলা.risk as keyof typeof ঝুঁকি_রঙ]
-                          } rounded-full blur opacity-30 ${
-                            selectedDistrict === জেলা.name ? "animate-ping" : ""
-                          }`}
-                        ></div>
-                        <div
-                          className={`relative w-8 h-8 ${
-                            ঝুঁকি_রঙ[জেলা.risk as keyof typeof ঝুঁকি_রঙ]
-                          } rounded-full border-4 ${
-                            ঝুঁকি_বর্ডার[জেলা.risk as keyof typeof ঝুঁকি_বর্ডার]
-                          } flex items-center justify-center`}
-                        >
-                          <MapPin className="h-4 w-4 text-white" />
-                        </div>
-                        {selectedDistrict === জেলা.name && (
-                          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-white px-3 py-1 rounded-lg shadow-lg border border-green-200 whitespace-nowrap">
-                            <span className="text-sm font-medium text-green-900">
+                  {Leaflet &&
+                    বাংলাদেশের_জেলাসমূহ.map((জেলা) => (
+                      <Marker
+                        key={জেলা.name}
+                        position={[জেলা.lat, জেলা.lon]}
+                        icon={ঝুঁকি_আইকন[জেলা.risk]}
+                      >
+                        <Popup>
+                          <div className="p-2 min-w-[200px]">
+                            <h3 className="font-bold text-lg text-green-900 mb-2">
                               {জেলা.name}
-                            </span>
+                            </h3>
+                            <div
+                              className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-3 ${
+                                জেলা.risk === "অতি উচ্চ"
+                                  ? "bg-red-100 text-red-800"
+                                  : জেলা.risk === "উচ্চ"
+                                  ? "bg-orange-100 text-orange-800"
+                                  : জেলা.risk === "মধ্যম"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                              }`}
+                            >
+                              {জেলা.risk} ঝুঁকি
+                            </div>
+                            <p className="text-sm text-gray-600 mb-2">
+                              অবস্থান: {জেলা.lat.toFixed(4)},{" "}
+                              {জেলা.lon.toFixed(4)}
+                            </p>
+                            <button
+                              className="w-full mt-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                              onClick={() => setSelectedDistrict(জেলা.name)}
+                            >
+                              বিস্তারিত দেখুন
+                            </button>
                           </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {/* বৃষ্টিপাত অ্যানিমেশন */}
-                {layer === "বৃষ্টিপাত" && (
-                  <div className="absolute inset-0">
-                    {[...Array(20)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="absolute w-1 h-8 bg-gradient-to-b from-blue-400 to-transparent opacity-40 animate-bounce"
-                        style={{
-                          left: `${10 + Math.random() * 80}%`,
-                          top: `${Math.random() * 100}%`,
-                          animationDelay: `${Math.random() * 2}s`,
-                        }}
-                      ></div>
+                        </Popup>
+                      </Marker>
                     ))}
-                  </div>
-                )}
+                </MapContainer>
+
+                {/* Zoom কন্ট্রোল */}
+                <div className="absolute bottom-4 left-4 flex flex-col gap-2">
+                  <button
+                    onClick={() => setZoomLevel((z) => Math.max(6, z - 1))}
+                    className="p-2 bg-white border border-gray-300 rounded-lg shadow hover:bg-gray-50"
+                  >
+                    <span className="text-lg font-bold text-gray-700">+</span>
+                  </button>
+                  <button
+                    onClick={() => setZoomLevel((z) => Math.min(14, z + 1))}
+                    className="p-2 bg-white border border-gray-300 rounded-lg shadow hover:bg-gray-50"
+                  >
+                    <span className="text-lg font-bold text-gray-700">-</span>
+                  </button>
+                </div>
               </div>
 
               {/* মানচিত্র কন্ট্রোল */}
-              <div className="flex flex-wrap gap-4 mt-6">
-                <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg flex items-center gap-2">
+              <div className="flex flex-wrap gap-3 mt-6">
+                <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg flex items-center gap-2 hover:from-green-600 hover:to-emerald-700 transition-all">
                   <Download className="h-4 w-4" />
                   <span>মানচিত্র ডাউনলোড</span>
                 </button>
-                <button className="px-4 py-2 bg-white border-2 border-green-200 text-green-700 rounded-lg hover:bg-green-50">
-                  প্রিন্ট করুন
+                <button
+                  onClick={() => setZoomLevel(7)}
+                  className="px-4 py-2 bg-white border-2 border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-colors"
+                >
+                  পুরো বাংলাদেশ দেখুন
                 </button>
-                <button className="px-4 py-2 bg-white border-2 border-green-200 text-green-700 rounded-lg hover:bg-green-50">
-                  শেয়ার করুন
-                </button>
-                <button className="px-4 py-2 bg-white border-2 border-green-200 text-green-700 rounded-lg hover:bg-green-50">
-                  সম্পূর্ণ স্ক্রিন
+                <button
+                  onClick={() => {
+                    if (নির্বাচিত_জেলা) {
+                      setZoomLevel(10);
+                    }
+                  }}
+                  className="px-4 py-2 bg-white border-2 border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-colors"
+                >
+                  নির্বাচিত জেলায় যান
                 </button>
               </div>
 
@@ -418,16 +525,22 @@ export default function RiskMapPage() {
                     <button
                       key={জেলা.name}
                       onClick={() => setSelectedDistrict(জেলা.name)}
-                      className={`p-3 rounded-lg border-2 ${
+                      className={`p-3 rounded-lg border-2 transition-all ${
                         selectedDistrict === জেলা.name
-                          ? "border-green-500 bg-green-50"
-                          : "border-green-200"
-                      } hover:bg-green-50 transition-colors`}
+                          ? "border-green-500 bg-green-50 shadow-md"
+                          : "border-green-200 hover:border-green-300"
+                      }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-green-800 font-medium">
-                          {জেলা.name}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-3 h-3 rounded-full`}
+                            style={{ backgroundColor: ঝুঁকি_রঙ[জেলা.risk] }}
+                          ></div>
+                          <span className="text-green-800 font-medium">
+                            {জেলা.name}
+                          </span>
+                        </div>
                         <span
                           className={`text-xs px-2 py-1 rounded-full ${
                             জেলা.risk === "অতি উচ্চ"
@@ -450,6 +563,32 @@ export default function RiskMapPage() {
           </div>
         </div>
       </div>
+
+      {/* Leaflet CSS */}
+      <style jsx global>{`
+        @import url("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+
+        .leaflet-container {
+          width: 100%;
+          height: 100%;
+          font-family: "Hind Siliguri", sans-serif;
+          z-index: 1;
+        }
+
+        .leaflet-control-attribution {
+          font-size: 10px;
+        }
+
+        .leaflet-popup-content {
+          margin: 0;
+          padding: 0;
+        }
+
+        .leaflet-popup-content-wrapper {
+          border-radius: 8px;
+          padding: 0;
+        }
+      `}</style>
     </div>
   );
 }

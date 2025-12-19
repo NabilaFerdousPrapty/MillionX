@@ -1,4 +1,27 @@
 @import "tailwindcss";
+/* globals.css এর শেষে */
+@import "leaflet/dist/leaflet.css";
+
+/* Leaflet কাস্টম স্টাইল */
+.leaflet-container {
+  font-family: 'Hind Siliguri', sans-serif;
+}
+
+.leaflet-control-zoom a {
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.leaflet-popup-content {
+  margin: 0;
+  padding: 12px;
+}
 
 :root {
   --background: 120 40% 98%;

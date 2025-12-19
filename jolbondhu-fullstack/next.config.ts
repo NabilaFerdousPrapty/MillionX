@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  reactStrictMode: true,
+  images: {
+    domains: ["tile.openstreetmap.org"],
+  },
+  // এই লাইন যোগ করুন
+  transpilePackages: ["react-leaflet"],
 };
 
 export default nextConfig;
