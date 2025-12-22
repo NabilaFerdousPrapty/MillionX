@@ -22,12 +22,16 @@ import RiskCard from "@/components/RiskCard";
 import WeatherCard from "@/components/WeatherCard";
 import AdvisoryCard from "@/components/AdvisoryCard";
 import CropSelector from "@/components/CropSelector";
+import AIFeatures from "./components/AIFeatures";
 
 export default function HomePage() {
   const [ঝুঁকি_স্তর, ঝুঁকি_স্তর_সেটকরো] = useState<
     "নিম্ন" | "মধ্যম" | "উচ্চ" | "অতি_উচ্চ"
   >("উচ্চ");
-
+  const [userLocation, setUserLocation] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
   return (
     <div className="space-y-8 py-6">
       {/* হিরো সেকশন */}
@@ -252,6 +256,9 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+      <div className="mt-12">
+        <AIFeatures userLocation={userLocation} />
+      </div>
 
       {/* কৃষকগণের সাক্ষাৎকার */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
