@@ -1,461 +1,221 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
-  Phone,
-  AlertTriangle,
-  Ambulance,
-  Shield,
-  MessageSquare,
-  Download,
-  Share2,
   MapPin,
-  Clock,
-  Users,
-  FileText,
-  Video,
-  Bell,
+  Navigation,
+  AlertTriangle,
+  Hospital,
+  Home,
+  Shield,
 } from "lucide-react";
 
-const জরুরি_নম্বর = [
-  {
-    category: "জরুরি সাহায্য",
-    contacts: [
-      {
-        name: "ন্যাশনাল ইমার্জেন্সি সার্ভিস",
-        number: "৯৯৯",
-        desc: "সকল জরুরি সাহায্য",
-      },
-      { name: "দুর্যোগ ব্যবস্থাপনা", number: "১০৯০", desc: "বন্যা/দুর্যোগ" },
-      { name: "অ্যাম্বুলেন্স", number: "১০৬", desc: "জরুরি চিকিৎসা" },
-      { name: "ফায়ার সার্ভিস", number: "১৬১৬৩", desc: "আগুন নেভানো" },
-    ],
-  },
-  {
-    category: "কৃষি সাহায্য",
-    contacts: [
-      { name: "কৃষি হেল্পলাইন", number: "১৬১২৩", desc: "কৃষি পরামর্শ" },
-      {
-        name: "কৃষি সম্প্রসারণ",
-        number: "০৯৬৩৮-৭৭৭৭৭৭",
-        desc: "স্থানীয় অফিস",
-      },
-      { name: "কৃষি বীমা", number: "০৯৬১১৭৭৭৭৭৭", desc: "বীমা দাবি" },
-      { name: "বীজ সরবরাহ", number: "০২-৫৫০১২৩৪৫", desc: "বাংলাদেশ কৃষি" },
-    ],
-  },
-  {
-    category: "সরকারি সাহায্য",
-    contacts: [
-      {
-        name: "প্রধানমন্ত্রীর কার্যালয়",
-        number: "১৬২৩৭",
-        desc: "নাগরিক সেবা",
-      },
-      { name: "জেলা প্রশাসক", number: "স্থানীয় নম্বর", desc: "জেলা পর্যায়" },
-      {
-        name: "উপজেলা নির্বাহী অফিসার",
-        number: "স্থানীয় নম্বর",
-        desc: "উপজেলা পর্যায়",
-      },
-      {
-        name: "ইউনিয়ন পরিষদ",
-        number: "স্থানীয় নম্বর",
-        desc: "গ্রাম পর্যায়",
-      },
-    ],
-  },
-  {
-    category: "স্বাস্থ্য সেবা",
-    contacts: [
-      { name: "ডায়াগনস্টিক সেন্টার", number: "১০৬৫৫", desc: "করোনা টেস্ট" },
-      {
-        name: "স্বাস্থ্য বাতায়ন",
-        number: "১৬২৬৩",
-        desc: "সকল স্বাস্থ্য সেবা",
-      },
-      { name: "মাতৃস্বাস্থ্য", number: "০৯৬১১৬৭৭৭৭৭", desc: "গর্ভবতী মহিলা" },
-      { name: "শিশু স্বাস্থ্য", number: "১০৯৮", desc: "শিশু সুরক্ষা" },
-    ],
-  },
-];
+interface LocationMapProps {
+  center: [number, number];
+  userLocation?: [number, number];
+  facilities: Array<{
+    lat: number;
+    lon: number;
+    type: string;
+    name: string;
+    distanceText: string;
+  }>;
+}
 
-const জরুরি_পদ্ধতি = [
-  {
-    step: 1,
-    title: "বন্যা সতর্কতা পেলে",
-    actions: [
-      "গুরুত্বপূর্ণ দলিলপত্র উঁচু স্থানে রাখুন",
-      "গবাদিপশু নিরাপদ স্থানে নিন",
-      "জরুরি যোগাযোগের নম্বর হাতে রাখুন",
-    ],
-  },
-  {
-    step: 2,
-    title: "বন্যা চলাকালীন",
-    actions: [
-      "উঁচু ও নিরাপদ স্থানে থাকুন",
-      "দূষিত পানি পান করবেন না",
-      "বিজলী সংযোগ বিচ্ছিন্ন রাখুন",
-    ],
-  },
-  {
-    step: 3,
-    title: "বন্যা পরবর্তী",
-    actions: [
-      "স্বাস্থ্য সুরক্ষা নিশ্চিত করুন",
-      "ক্ষতি মূল্যায়ন করুন",
-      "সরকারি সাহায্যের জন্য আবেদন করুন",
-    ],
-  },
-];
+const LocationMap: React.FC<LocationMapProps> = ({
+  center,
+  userLocation,
+  facilities,
+}) => {
+  const [map, setMap] = useState<L.Map | null>(null);
+  const [markers, setMarkers] = useState<L.Marker[]>([]);
 
-const নিকটস্থ_সুবিধা = [
-  {
-    type: "সাইক্লোন শেল্টার",
-    distance: "২.৫ কিমি",
-    capacity: "৫০০ জন",
-    contact: "স্থানীয় ইউপি চেয়ারম্যান",
-  },
-  {
-    type: "স্বাস্থ্য কমপ্লেক্স",
-    distance: "৩.২ কিমি",
-    capacity: "১০০ বেড",
-    contact: "ডাঃ মোঃ আলী - ০১৭১২৩৪৫৬৭৮",
-  },
-  {
-    type: "খাদ্য গুদাম",
-    distance: "৪.০ কিমি",
-    capacity: "১০ টন",
-    contact: "উপজেলা খাদ্য কর্মকর্তা",
-  },
-  {
-    type: "পশু চিকিৎসা কেন্দ্র",
-    distance: "২.৮ কিমি",
-    capacity: "১০০ প্রাণী",
-    contact: "ডাঃ করিম - ০১৯১২৩৪৫৬৭৮",
-  },
-];
+  useEffect(() => {
+    // Initialize map
+    const mapInstance = L.map("emergency-map-container").setView(center, 13);
 
-export default function EmergencyPage() {
-  const [selectedCategory, setSelectedCategory] = useState("জরুরি_সাহায্য");
+    // Add tile layer
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+      maxZoom: 18,
+    }).addTo(mapInstance);
+
+    setMap(mapInstance);
+
+    // Cleanup
+    return () => {
+      mapInstance.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!map) return;
+
+    // Clear existing markers
+    markers.forEach((marker) => marker.remove());
+    const newMarkers: L.Marker[] = [];
+
+    // Add user location marker
+    if (userLocation) {
+      const userIcon = L.divIcon({
+        html: `
+          <div class="relative">
+            <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center shadow-lg animate-pulse">
+              <div class="w-8 h-8 bg-white rounded-full"></div>
+            </div>
+            <div class="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-2 py-1 rounded-lg text-xs whitespace-nowrap">
+              আপনি এখানে
+            </div>
+          </div>
+        `,
+        className: "custom-user-marker",
+        iconSize: [48, 48],
+        iconAnchor: [24, 48],
+      });
+
+      const userMarker = L.marker(userLocation, { icon: userIcon }).addTo(map)
+        .bindPopup(`
+          <div class="p-2">
+            <h3 class="font-bold text-blue-900">আপনার অবস্থান</h3>
+            <p class="text-sm text-gray-600">${userLocation[0].toFixed(
+              4
+            )}, ${userLocation[1].toFixed(4)}</p>
+          </div>
+        `);
+      newMarkers.push(userMarker);
+    }
+
+    // Add facility markers
+    facilities.forEach((facility, index) => {
+      let iconHtml = "";
+      let iconColor = "";
+
+      if (
+        facility.type.includes("হাসপাতাল") ||
+        facility.type.includes("স্বাস্থ্য")
+      ) {
+        iconHtml = `
+          <div class="relative">
+            <div class="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
+              <div class="text-white">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div class="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-2 py-1 rounded-lg text-xs whitespace-nowrap">
+              ${facility.type}
+            </div>
+          </div>
+        `;
+        iconColor = "red";
+      } else if (
+        facility.type.includes("শেল্টার") ||
+        facility.type.includes("আশ্রয়")
+      ) {
+        iconHtml = `
+          <div class="relative">
+            <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+              <div class="text-white">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div class="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-2 py-1 rounded-lg text-xs whitespace-nowrap">
+              ${facility.type}
+            </div>
+          </div>
+        `;
+        iconColor = "green";
+      } else {
+        iconHtml = `
+          <div class="relative">
+            <div class="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center shadow-lg">
+              <div class="text-white">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div class="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-orange-600 text-white px-2 py-1 rounded-lg text-xs whitespace-nowrap">
+              ${facility.type}
+            </div>
+          </div>
+        `;
+        iconColor = "orange";
+      }
+
+      const icon = L.divIcon({
+        html: iconHtml,
+        className: "custom-facility-marker",
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+      });
+
+      const popupContent = `
+        <div class="p-3 min-w-[200px]">
+          <h4 class="font-bold text-${iconColor}-900 mb-1">${facility.name}</h4>
+          <p class="text-sm text-gray-600 mb-2">${facility.type}</p>
+          <div class="space-y-1">
+            <p class="text-xs text-gray-700"><strong>দূরত্ব:</strong> ${
+              facility.distanceText
+            }</p>
+            <p class="text-xs text-gray-700"><strong>অবস্থান:</strong> ${facility.lat.toFixed(
+              4
+            )}, ${facility.lon.toFixed(4)}</p>
+          </div>
+        </div>
+      `;
+
+      const marker = L.marker([facility.lat, facility.lon], { icon })
+        .addTo(map)
+        .bindPopup(popupContent);
+
+      newMarkers.push(marker);
+    });
+
+    setMarkers(newMarkers);
+
+    // Fit bounds to show all markers
+    if (userLocation || facilities.length > 0) {
+      const bounds = L.latLngBounds(
+        userLocation ? [userLocation] : [],
+        facilities.map((f) => [f.lat, f.lon])
+      );
+      map.fitBounds(bounds.pad(0.1));
+    }
+  }, [map, center, userLocation, facilities]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-red-50 to-orange-50">
-      <div className="container mx-auto px-4 py-8">
-        {/* হেডার */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-500 to-orange-600 rounded-full text-white mb-6">
-            <AlertTriangle className="h-6 w-6" />
-            <span className="text-lg font-semibold">
-              জরুরি যোগাযোগ ও সাহায্য
-            </span>
-          </div>
+    <div className="space-y-4">
+      <div
+        id="emergency-map-container"
+        className="h-[400px] rounded-xl overflow-hidden border border-gray-300"
+      />
 
-          <h1 className="text-3xl md:text-4xl font-bold text-red-900 mb-4">
-            বিপদে পড়লে এই নম্বরগুলো মনে রাখুন
-          </h1>
-          <p className="text-red-700 text-lg max-w-3xl mx-auto">
-            বন্যা বা অন্য কোন জরুরি অবস্থায় সাহায্যের জন্য এই নম্বরগুলো ব্যবহার
-            করুন। সমস্ত নম্বর ২৪/৭ সক্রিয় থাকে।
-          </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+          <span className="text-sm text-blue-700">আপনার অবস্থান</span>
         </div>
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* বাম কলাম - জরুরি নম্বর */}
-          <div className="lg:col-span-2">
-            <div className="bangladeshi-card p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <Phone className="h-6 w-6 text-red-600" />
-                <h2 className="text-xl font-bold text-red-900">
-                  জরুরি যোগাযোগ নম্বর
-                </h2>
-              </div>
-
-              {/* ক্যাটেগরি ট্যাব */}
-              <div className="flex flex-wrap gap-2 mb-6">
-                {জরুরি_নম্বর.map((cat) => (
-                  <button
-                    key={cat.category}
-                    onClick={() => setSelectedCategory(cat.category)}
-                    className={`px-4 py-2 rounded-lg ${
-                      selectedCategory === cat.category
-                        ? "bg-red-500 text-white"
-                        : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {cat.category}
-                  </button>
-                ))}
-              </div>
-
-              {/* কন্টাক্ট কার্ড */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {জরুরি_নম্বর
-                  .find((cat) => cat.category === selectedCategory)
-                  ?.contacts.map((contact, index) => (
-                    <div
-                      key={index}
-                      className="bg-gradient-to-br from-red-50 to-orange-50 p-6 rounded-xl border border-red-200"
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h3 className="font-bold text-red-900 text-lg">
-                            {contact.name}
-                          </h3>
-                          <p className="text-red-700 text-sm">{contact.desc}</p>
-                        </div>
-                        <div className="p-2 bg-red-100 rounded-lg">
-                          <Phone className="h-5 w-5 text-red-600" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="text-center py-3 bg-white rounded-lg border border-red-200">
-                          <div className="text-2xl font-bold text-red-900">
-                            {contact.number}
-                          </div>
-                          <p className="text-sm text-red-700">২৪/৭ খোলা</p>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button className="flex-1 py-2 bg-red-500 text-white rounded-lg flex items-center justify-center gap-2">
-                            <Phone className="h-4 w-4" />
-                            <span>কল করুন</span>
-                          </button>
-                          <button className="flex-1 py-2 bg-white border-2 border-red-200 text-red-700 rounded-lg">
-                            এসএমএস
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-
-              {/* জরুরি সতর্ক বার্তা */}
-              <div className="mt-8 p-4 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl text-white">
-                <div className="flex items-center gap-3 mb-2">
-                  <Bell className="h-5 w-5" />
-                  <h4 className="font-bold">🚨 জরুরি বার্তা</h4>
-                </div>
-                <p className="text-sm">
-                  বন্যা পূর্বাভাস: সিরাজগঞ্জ জেলায় আগামী ২৪ ঘন্টার মধ্যে বন্যার
-                  উচ্চ ঝুঁকি রয়েছে। সকলকে সতর্ক থাকার এবং জরুরি নম্বর হাতে
-                  রাখার অনুরোধ করা হচ্ছে।
-                </p>
-              </div>
-            </div>
-
-            {/* জরুরি পদ্ধতি */}
-            <div className="bangladeshi-card p-6 mt-8">
-              <div className="flex items-center gap-3 mb-6">
-                <Shield className="h-6 w-6 text-orange-600" />
-                <h2 className="text-xl font-bold text-orange-900">
-                  জরুরি অবস্থায় করণীয়
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {জরুরি_পদ্ধতি.map((step) => (
-                  <div key={step.step} className="relative">
-                    <div className="absolute -top-3 -left-3 w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 text-white rounded-full flex items-center justify-center text-xl font-bold z-10">
-                      {step.step}
-                    </div>
-                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 pt-8 rounded-xl border border-orange-200 h-full">
-                      <h3 className="font-bold text-orange-900 mb-4">
-                        {step.title}
-                      </h3>
-                      <ul className="space-y-2">
-                        {step.actions.map((action, index) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-orange-500 rounded-full mt-2"></div>
-                            <span className="text-orange-800 text-sm">
-                              {action}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ডান কলাম - অতিরিক্ত তথ্য */}
-          <div className="space-y-6">
-            {/* নিকটস্থ সুবিধা */}
-            <div className="bangladeshi-card p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <MapPin className="h-6 w-6 text-emerald-600" />
-                <h2 className="text-xl font-bold text-emerald-900">
-                  নিকটস্থ জরুরি সুবিধা
-                </h2>
-              </div>
-
-              <div className="space-y-4">
-                {নিকটস্থ_সুবিধা.map((facility, index) => (
-                  <div
-                    key={index}
-                    className="p-4 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-200"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-medium text-emerald-900">
-                          {facility.type}
-                        </h4>
-                        <div className="flex items-center gap-2 text-sm text-emerald-700 mt-1">
-                          <MapPin className="h-4 w-4" />
-                          <span>{facility.distance} দূরে</span>
-                          <Users className="h-4 w-4 ml-2" />
-                          <span>{facility.capacity} ধারণক্ষমতা</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-sm text-emerald-800">
-                      <span className="font-medium">যোগাযোগ: </span>
-                      {facility.contact}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* জরুরি ডকুমেন্ট */}
-            <div className="bangladeshi-card p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <FileText className="h-6 w-6 text-blue-600" />
-                <h2 className="text-xl font-bold text-blue-900">
-                  জরুরি ডকুমেন্ট
-                </h2>
-              </div>
-
-              <div className="space-y-3">
-                {[
-                  { title: "জরুরি সাহায্য আবেদন ফর্ম", size: "১.২ MB" },
-                  { title: "ক্ষতি মূল্যায়ন ফর্ম", size: "০.৮ MB" },
-                  { title: "কৃষি বীমা ক্লেম ফর্ম", size: "১.৫ MB" },
-                  { title: "সরকারি সাহায্য গাইড", size: "২.৩ MB" },
-                ].map((doc, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200"
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="text-sm font-medium text-blue-900">
-                          {doc.title}
-                        </p>
-                        <p className="text-xs text-blue-700">{doc.size}</p>
-                      </div>
-                    </div>
-                    <button className="p-2 text-blue-600 hover:text-blue-700">
-                      <Download className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* দ্রুত সাহায্য */}
-            <div className="bangladeshi-card p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <Ambulance className="h-6 w-6 text-purple-600" />
-                <h2 className="text-xl font-bold text-purple-900">
-                  দ্রুত সাহায্য পান
-                </h2>
-              </div>
-
-              <div className="space-y-4">
-                <button className="w-full p-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl flex items-center justify-center gap-3">
-                  <Ambulance className="h-6 w-6" />
-                  <span className="text-lg font-semibold">
-                    অ্যাম্বুলেন্স ডাকুন
-                  </span>
-                </button>
-
-                <button className="w-full p-4 bg-gradient-to-r from-red-500 to-orange-600 text-white rounded-xl flex items-center justify-center gap-3">
-                  <AlertTriangle className="h-6 w-6" />
-                  <span className="text-lg font-semibold">জরুরি সতর্কতা</span>
-                </button>
-
-                <button className="w-full p-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl flex items-center justify-center gap-3">
-                  <MessageSquare className="h-6 w-6" />
-                  <span className="text-lg font-semibold">লাইভ চ্যাট</span>
-                </button>
-              </div>
-            </div>
-
-            {/* ভিডিও গাইড */}
-            <div className="bangladeshi-card p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <Video className="h-6 w-6 text-red-600" />
-                <h2 className="text-xl font-bold text-red-900">
-                  জরুরি ভিডিও গাইড
-                </h2>
-              </div>
-
-              <div className="space-y-4">
-                <div className="relative">
-                  <div className="aspect-video bg-gradient-to-br from-red-200 to-orange-300 rounded-xl flex items-center justify-center">
-                    <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
-                      <div className="w-0 h-0 border-t-8 border-b-8 border-l-12 border-transparent border-l-red-600 ml-1"></div>
-                    </div>
-                  </div>
-                  <p className="mt-2 font-medium text-red-900">
-                    বন্যা সময় করণীয়
-                  </p>
-                  <p className="text-sm text-red-700">৫:৩০ মিনিট</p>
-                </div>
-
-                <div className="relative">
-                  <div className="aspect-video bg-gradient-to-br from-blue-200 to-cyan-300 rounded-xl flex items-center justify-center">
-                    <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
-                      <div className="w-0 h-0 border-t-8 border-b-8 border-l-12 border-transparent border-l-blue-600 ml-1"></div>
-                    </div>
-                  </div>
-                  <p className="mt-2 font-medium text-blue-900">
-                    প্রাথমিক চিকিৎসা
-                  </p>
-                  <p className="text-sm text-blue-700">৮:১৫ মিনিট</p>
-                </div>
-              </div>
-            </div>
-
-            {/* শেয়ার অপশন */}
-            <div className="bangladeshi-card p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <Share2 className="h-6 w-6 text-amber-600" />
-                <h2 className="text-xl font-bold text-amber-900">
-                  এই পৃষ্ঠা শেয়ার করুন
-                </h2>
-              </div>
-
-              <p className="text-amber-700 mb-4">
-                এই জরুরি নম্বরগুলো আপনার বন্ধু ও পরিবারের সদস্যদের সাথে শেয়ার
-                করুন।
-              </p>
-
-              <div className="grid grid-cols-3 gap-2">
-                <button className="p-3 bg-blue-100 text-blue-700 rounded-lg">
-                  ফেসবুক
-                </button>
-                <button className="p-3 bg-green-100 text-green-700 rounded-lg">
-                  হোয়াটসঅ্যাপ
-                </button>
-                <button className="p-3 bg-red-100 text-red-700 rounded-lg">
-                  এসএমএস
-                </button>
-              </div>
-
-              <button className="w-full mt-4 p-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-lg">
-                লিঙ্ক কপি করুন
-              </button>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
+          <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+          <span className="text-sm text-red-700">হাসপাতাল/স্বাস্থ্য</span>
+        </div>
+        <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+          <span className="text-sm text-green-700">আশ্রয়কেন্দ্র</span>
+        </div>
+        <div className="flex items-center gap-2 p-2 bg-orange-50 rounded-lg">
+          <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+          <span className="text-sm text-orange-700">অন্যান্য সুবিধা</span>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default LocationMap;
