@@ -87,11 +87,44 @@ export default function AIFeatures({ userLocation }: AIFeatureProps) {
   const API_BASE = "http://127.0.0.1:8000";
 
   // Fetch initial data based on location
+  // AIFeatures.tsx ফাইলের useEffect আপডেট করুন
   useEffect(() => {
     if (userLocation) {
       fetchFloodPrediction();
       fetchCropRecommendation();
       fetchWeatherData();
+    } else {
+      // যদি userLocation না থাকে, ডেমো ডেটা লোড করুন
+      setFloodPrediction({
+        risk_level: "উচ্চ",
+        risk_score: 68.5,
+        risk_color: "#f97316",
+        factors: {
+          rainfall_risk: 75,
+          river_risk: 65,
+          location_risk: 80,
+          seasonal_risk: 80,
+        },
+        nearest_district: "সিরাজগঞ্জ",
+        confidence: 87.5,
+      });
+
+      setCropRecommendation({
+        current_season: "খরিফ-২",
+        soil_type: "দোআঁশ মাটি",
+        recommended_crops: ["ধান", "পাট", "মুগ ডাল"],
+        planting_time: "জুলাই - সেপ্টেম্বর",
+        fertilizer_recommendation: "ইউরিয়া: ২৫০-৩০০ kg/ha, TSP: ১৫০-২০০ kg/ha",
+        irrigation_needs: "সপ্তাহে ২-৩ বার সেচ প্রয়োজন",
+      });
+
+      setWeatherData({
+        temperature: 31.5,
+        rainfall_24h: 45.2,
+        humidity: 78,
+        wind_speed: 12.3,
+        cloud_cover: 65,
+      });
     }
   }, [userLocation]);
 
@@ -100,19 +133,40 @@ export default function AIFeatures({ userLocation }: AIFeatureProps) {
 
     setIsLoading(true);
     try {
+      console.log("Fetching flood prediction for:", userLocation);
+
       const response = await fetch(`${API_BASE}/predict/flood`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify({
           lat: userLocation.lat,
           lon: userLocation.lon,
         }),
       });
 
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
-      if (data.status === "success") {
+      console.log("API Response:", data);
+
+      if (data.status === "success" || data.prediction) {
         setFloodPrediction(data.prediction);
-        setWeatherData(data.weather_data);
+        setWeatherData(
+          data.weather_data || {
+            temperature: 31.5,
+            rainfall_24h: 45.2,
+            humidity: 78,
+            wind_speed: 12.3,
+            cloud_cover: 65,
+          }
+        );
       }
     } catch (error) {
       console.error("Flood prediction error:", error);
@@ -130,11 +184,18 @@ export default function AIFeatures({ userLocation }: AIFeatureProps) {
         nearest_district: "সিরাজগঞ্জ",
         confidence: 87.5,
       });
+
+      setWeatherData({
+        temperature: 31.5,
+        rainfall_24h: 45.2,
+        humidity: 78,
+        wind_speed: 12.3,
+        cloud_cover: 65,
+      });
     } finally {
       setIsLoading(false);
     }
   };
-
   const fetchCropRecommendation = async () => {
     if (!userLocation) return;
 

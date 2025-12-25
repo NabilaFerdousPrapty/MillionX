@@ -73,17 +73,17 @@ export default function Header() {
 
           {/* সিএনটি এবং মোবাইল মেনু */}
           <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
+            {/* <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
               <CloudRain className="h-5 w-5 text-emerald-600" />
               <span className="text-sm font-medium text-emerald-700">
                 সক্রিয় বন্যা সতর্কতা
               </span>
-            </div>
+            </div> */}
 
-            <button className="farmer-button flex items-center gap-2">
+            {/* <button className="farmer-button flex items-center gap-2">
               <Shield className="h-5 w-5" />
               <span className="hidden sm:inline">সতর্কতা পান</span>
-            </button>
+            </button> */}
 
             {/* মোবাইল মেনু বাটন */}
             <button

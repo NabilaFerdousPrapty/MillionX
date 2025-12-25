@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CloudRain,
   Shield,
@@ -32,6 +32,31 @@ export default function HomePage() {
     lat: number;
     lon: number;
   } | null>(null);
+
+  // ডেমো লোকেশনের জন্য useEffect যোগ করুন
+  useEffect(() => {
+    // যদি LocationSelector থেকে লোকেশন না আসে, ডেমো লোকেশন সেট করুন
+    if (!userLocation) {
+      // বাংলাদেশের সাধারণ স্থানাঙ্ক (ঢাকা)
+      setUserLocation({
+        lat: 23.8103,
+        lon: 90.4125,
+      });
+    }
+  }, []);
+
+  // LocationSelector থেকে লোকেশন আপডেট করার ফাংশন
+  const handleLocationSelect = (location: {
+    lat: number;
+    lon: number;
+    district: string;
+  }) => {
+    setUserLocation({
+      lat: location.lat,
+      lon: location.lon,
+    });
+  };
+
   return (
     <div className="space-y-8 py-6">
       {/* হিরো সেকশন */}
