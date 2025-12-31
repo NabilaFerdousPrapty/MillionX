@@ -27,7 +27,6 @@ JolBondhu bridges the gap between **advanced hydrological data** and **on-ground
 ### What JolBondhu Does
 
 - Analyzes **real-time rainfall**, **river water levels**, and **historical flood trends**
-- Generates **3–5 day localized flood risk forecasts**
 - Classifies risk into **Low / Medium / High** levels
 - Delivers **crop-specific and situation-aware recommendations**
 
