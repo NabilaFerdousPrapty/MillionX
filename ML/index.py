@@ -1283,4 +1283,4 @@ async def health_check():
 
 if __name__ == "__main__":
     print("🚀 Starting JolBondhu AI Assistant...")
-    uvicorn.run(app, host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
