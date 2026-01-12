@@ -210,12 +210,6 @@ export default function HomePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* বাম কলাম */}
         <div className="lg:col-span-2 space-y-6">
-          <RiskCard
-            level={ঝুঁকি_স্তর}
-            score={75}
-            confidence={85}
-            nextUpdate="২ ঘন্টা পর"
-          />
           <AdvisoryCard />
         </div>
 
