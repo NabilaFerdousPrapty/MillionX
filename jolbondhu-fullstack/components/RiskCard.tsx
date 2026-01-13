@@ -263,6 +263,35 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
       { name: "যমুনা নদী", lat: 24.5, lon: 89.8 },
       { name: "মেঘনা নদী", lat: 23, lon: 90.7 },
       { name: "ব্রহ্মপুত্র নদ", lat: 25, lon: 90 },
+      { name: "বুরিগঙ্গা নদী", lat: 23.7, lon: 90.4 },
+      { name: "তিস্তা নদী", lat: 25.8, lon: 88.9 },
+      { name: "মধুমতি নদী", lat: 23.1, lon: 89.9 },
+      { name: "কর্ণফুলী নদী", lat: 22.3, lon: 91.8 },
+      {
+        name: "সুরমা নদী",
+        lat: 24.9,
+        lon: 91.9,
+      },
+      {
+        name: "আত্রাই নদী",
+        lat: 24.3,
+        lon: 88.5,
+      },
+      {
+        name: "ফেনী নদী",
+        lat: 22.8,
+        lon: 91.9,
+      },
+      {
+        name: "হালদা নদী",
+        lat: 22.9,
+        lon: 91.9,
+      },
+      {
+        name: "শীতলক্ষ্যা নদী",
+        lat: 23.9,
+        lon: 90.5,
+      },
     ];
 
     let nearest = rivers[0];
