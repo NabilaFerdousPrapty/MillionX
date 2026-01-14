@@ -63,8 +63,13 @@ interface Coordinates {
   lat: number;
   lon: number;
 }
-
-export default function WeatherCard() {
+interface WeatherCardProps {
+  location?: {
+    lat: number;
+    lon: number;
+  } | null;
+}
+export default function WeatherCard({ location }: WeatherCardProps) {
   const [weatherData, setWeatherData] = useState<WeatherResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

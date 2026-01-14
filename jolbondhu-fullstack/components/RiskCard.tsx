@@ -9,12 +9,15 @@ import {
   RefreshCw,
   MapPin,
   CloudRain,
-  River,
   Thermometer,
   Wind,
   Loader2,
   ShieldAlert,
   Clock,
+  Waves,
+  ThermometerSun,
+  Cloud,
+  Navigation,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -55,31 +58,6 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
     lon: number;
   } | null>(null);
 
-  // Real-time flood data APIs (choose one or combine)
-  const FLOOD_APIS = {
-    // Option 1: Global Flood Awareness System (GloFAS)
-    GLOFAS: (lat: number, lon: number) =>
-      `https://api.globalfloods.eu/api/flood-alert?lat=${lat}&lon=${lon}&threshold=medium`,
-
-    // Option 2: Flood Forecasting APIs (Multiple sources)
-    FLOOD_FORECAST: (lat: number, lon: number) =>
-      `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=ae2f97df1a45e8f8eb5d0be9feeeffb1&units=metric`,
-
-    // Option 3: Weather Data for Flood Risk Calculation
-    WEATHER_DATA: (lat: number, lon: number) =>
-      `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=ae2f97df1a45e8f8eb5d0be9feeeffb1&units=metric`,
-
-    // Option 4: Water Level Data (some sources)
-    WATER_LEVEL: (lat: number, lon: number) =>
-      `https://water.weather.gov/ahps2/hydrograph_to_xml.php?gage=${getNearestGauge(
-        lat,
-        lon
-      )}&output=xml`,
-  };
-
-  // Fallback: NASA Global Flood Mapping
-  const NASA_FLOOD_API = `https://api.nasa.gov/planetary/earth/assets?lon=${longitude}&lat=${latitude}&date=2024-01-01&dim=0.1&api_key=DEMO_KEY`;
-
   useEffect(() => {
     if (!latitude || !longitude) {
       getUserLocation();
@@ -108,7 +86,9 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
         });
       },
       (err) => {
-        setError("Unable to get location. Using default (Dhaka).");
+        setError(
+          "অবস্থান পাওয়া যায়নি। ডিফল্ট অবস্থান ব্যবহার করা হচ্ছে (ঢাকা)।"
+        );
         // Default to Dhaka
         setUserLocation({ lat: 23.8103, lon: 90.4125 });
       }
@@ -137,7 +117,9 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
         userLocation.lon
       );
       setFloodData(mockData);
-      setError("Using simulated data. Real APIs may require authentication.");
+      setError(
+        "সিমুলেটেড ডেটা ব্যবহার করা হচ্ছে। রিয়েল API-এর জন্য প্রমাণীকরণ প্রয়োজন হতে পারে।"
+      );
     } finally {
       setLoading(false);
     }
@@ -221,14 +203,14 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
           hour: "2-digit",
           minute: "2-digit",
         }),
-        locationName: geoData[0]?.name || "Unknown Location",
+        locationName: geoData[0]?.name || "অজানা অবস্থান",
         factors: {
           precipitation,
           riverLevel,
           soilMoisture,
           upstreamFlow: riverLevel * 50, // Simulated
           windSpeed,
-          forecast: weatherData.list[0]?.weather[0]?.description || "Unknown",
+          forecast: weatherData.list[0]?.weather[0]?.description || "অজানা",
           temperature,
           humidity,
         },
@@ -473,7 +455,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
     <div className="bangladeshi-card p-6 relative overflow-hidden">
       {/* পটভূমি গ্রেডিয়েন্ট */}
       <div
-        className={`absolute inset-0 bg-linear-to-br ${কনফিগ.gradient} opacity-10`}
+        className={`absolute inset-0 bg-gradient-to-br ${কনফিগ.gradient} opacity-10`}
       />
 
       {/* Location and Refresh Header */}
@@ -562,7 +544,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
           </div>
           <div className="h-4 bg-green-100 rounded-full overflow-hidden">
             <div
-              className={`h-full bg-linear-to-r ${কনফিগ.gradient} rounded-full transition-all duration-1000`}
+              className={`h-full bg-gradient-to-r ${কনফিগ.gradient} rounded-full transition-all duration-1000`}
               style={{ width: `${floodData.riskScore}%` }}
             />
           </div>
@@ -602,7 +584,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
               {
                 label: "নদীর পানির স্তর",
                 value: `${floodData.factors.riverLevel.toFixed(1)} মিটার`,
-                icon: River,
+                icon: Waves,
                 status:
                   floodData.factors.riverLevel > 8
                     ? "উচ্চ"
@@ -636,7 +618,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
               {
                 label: "তাপমাত্রা",
                 value: `${floodData.factors.temperature.toFixed(1)}°C`,
-                icon: Thermometer,
+                icon: ThermometerSun,
                 status: floodData.factors.temperature > 35 ? "উচ্চ" : "সাধারণ",
                 color:
                   floodData.factors.temperature > 35
@@ -646,7 +628,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
               {
                 label: "উজানের প্রবাহ",
                 value: `${floodData.factors.upstreamFlow.toFixed(0)} m³/s`,
-                icon: River,
+                icon: Navigation,
                 status:
                   floodData.factors.upstreamFlow > 400
                     ? "উচ্চ"
@@ -673,7 +655,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
               {
                 label: "আপেক্ষিক আর্দ্রতা",
                 value: `${floodData.factors.humidity}%`,
-                icon: Droplets,
+                icon: Cloud,
                 status:
                   floodData.factors.humidity > 85
                     ? "উচ্চ"
@@ -712,7 +694,13 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
                         ? "text-amber-500"
                         : কারণ.color.includes("emerald")
                         ? "text-emerald-500"
-                        : "text-blue-500"
+                        : কারণ.color.includes("blue")
+                        ? "text-blue-500"
+                        : কারণ.color.includes("purple")
+                        ? "text-purple-500"
+                        : কারণ.color.includes("cyan")
+                        ? "text-cyan-500"
+                        : "text-gray-500"
                     }`}
                   />
                   <span
@@ -731,7 +719,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
         </div>
 
         {/* প্রস্তাবিত ব্যবস্থা */}
-        <div className=" from-green-50 to-emerald-50 p-4 rounded-xl border border-green-300">
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-300">
           <h4 className="font-bold text-green-800 mb-3 flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-green-600" />
             প্রস্তাবিত ব্যবস্থা
@@ -748,7 +736,7 @@ export default function RiskCard({ latitude, longitude }: RiskCardProps) {
 
         {/* সতর্কতা বার্তা */}
         {কনফিগ.alert && (
-          <div className="bg-linear-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-xl p-4 animate-pulse">
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-xl p-4 animate-pulse">
             <div className="flex items-center gap-3">
               <ShieldAlert className="h-6 w-6 text-red-600" />
               <div>
