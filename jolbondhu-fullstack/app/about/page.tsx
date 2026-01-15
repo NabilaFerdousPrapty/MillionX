@@ -51,24 +51,6 @@ const অংশীদার_সংস্থা = [
   { name: "বিশ্ব খাদ্য কর্মসূচি", logo: "🍚" },
 ];
 
-const পুরস্কার_এবং_স্বীকৃতি = [
-  {
-    year: "২০২৪",
-    award: "জাতীয় ডিজিটাল উদ্ভাবন পুরস্কার",
-    category: "কৃষি প্রযুক্তি",
-  },
-  {
-    year: "২০২৩",
-    award: "এশিয়া প্যাসিফিক সোসাইটি অ্যাওয়ার্ড",
-    category: "জলবায়ু সহিষ্ণুতা",
-  },
-  {
-    year: "২০২২",
-    award: "বাংলাদেশ সরকারের সেরা মোবাইল অ্যাপ",
-    category: "সামাজিক উন্নয়ন",
-  },
-];
-
 export default function AboutPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50 to-cyan-50">
@@ -251,44 +233,6 @@ export default function AboutPage() {
                 <p className="text-sm text-blue-900 font-medium">
                   {সংস্থা.name}
                 </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* পুরস্কার ও স্বীকৃতি */}
-        <div className="mb-16">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-600 rounded-full text-white mb-6">
-              <Award className="h-6 w-6" />
-              <span className="text-lg font-semibold">পুরস্কার ও স্বীকৃতি</span>
-            </div>
-            <h2 className="text-3xl font-bold text-amber-900 mb-4">
-              আমাদের অর্জন
-            </h2>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {পুরস্কার_এবং_স্বীকৃতি.map((পুরস্কার, index) => (
-              <div
-                key={index}
-                className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-6 border border-amber-200"
-              >
-                <div className="text-3xl font-bold text-amber-900 mb-2">
-                  {পুরস্কার.year}
-                </div>
-                <h3 className="text-xl font-bold text-amber-800 mb-3">
-                  {পুরস্কার.award}
-                </h3>
-                <p className="text-amber-700">{পুরস্কার.category}</p>
-                <div className="flex mt-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Star
-                      key={i}
-                      className="h-5 w-5 text-amber-500 fill-current"
-                    />
-                  ))}
-                </div>
               </div>
             ))}
           </div>
