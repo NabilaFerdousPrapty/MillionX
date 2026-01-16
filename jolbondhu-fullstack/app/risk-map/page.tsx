@@ -135,7 +135,7 @@ export default function RiskMapPage() {
     (async () => {
       try {
         setApiError("");
-        const res = await fetch(`${API_BASE}/districts`);
+        const res = await fetch(`${API_BASE}/alldistricts`);
         if (!res.ok) throw new Error(`Status: ${res.status}`);
         const data = await res.json();
 
@@ -155,6 +155,7 @@ export default function RiskMapPage() {
     })();
   }, []);
 
+  // In frontend code
   const fetchAiPrediction = async (
     districtName: string,
     lat: number,
@@ -163,20 +164,32 @@ export default function RiskMapPage() {
     setIsLoading(true);
     setApiError("");
     try {
-      const url = `${API_BASE}/predict?district=${encodeURIComponent(
-        districtName
-      )}&lat=${lat}&lon=${lon}`;
-      const res = await fetch(url);
+      // Change to POST request
+      const url = `${API_BASE}/predicting`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          district: districtName,
+          lat: lat,
+          lon: lon,
+        }),
+      });
+
       if (!res.ok) throw new Error(`Prediction Failed: ${res.status}`);
+
       const data = await res.json();
 
       if (data.status === "success") {
         setAiResult(data);
-        setZoomLevel(10); // Zoom in when result is found
+        setZoomLevel(12);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setApiError("Prediction API কাজ করছে না।");
+      setApiError(`API ত্রুটি: ${e.message}`);
     } finally {
       setIsLoading(false);
     }

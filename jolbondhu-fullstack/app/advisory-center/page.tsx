@@ -30,6 +30,16 @@ import {
   Lightbulb,
   Sparkles,
   Loader2,
+  Mic,
+  MicOff,
+  Send,
+  Zap,
+  TrendingUp,
+  Globe,
+  CloudRain,
+  Droplets,
+  Thermometer,
+  Wind,
 } from "lucide-react";
 import { PiPlant } from "react-icons/pi";
 
@@ -88,6 +98,15 @@ interface AIChatResponse {
   };
 }
 
+interface WeatherData {
+  temperature: number;
+  humidity: number;
+  rainfall: string;
+  windSpeed: number;
+  condition: string;
+  forecast: string[];
+}
+
 const API_BASE = "http://127.0.0.1:8000";
 
 export default function AdvisoryCenterPage() {
@@ -106,11 +125,19 @@ export default function AdvisoryCenterPage() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [askAiQuestion, setAskAiQuestion] = useState("");
   const [aiChatHistory, setAiChatHistory] = useState<
-    Array<{ type: "user" | "ai"; content: string }>
+    Array<{ type: "user" | "ai"; content: string; timestamp: Date }>
   >([]);
+  const [isListening, setIsListening] = useState(false);
+  const [location, setLocation] = useState<string | null>(null);
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamedText, setStreamedText] = useState("");
+  const [showFollowUps, setShowFollowUps] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const aiChatRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const streamControllerRef = useRef<AbortController | null>(null);
 
   // Initial data
   const পরামর্শ_বিষয়সমূহ: AdvisoryTopic[] = [
@@ -331,39 +358,156 @@ export default function AdvisoryCenterPage() {
 
   const নির্বাচিত_বিষয় = পরামর্শ_বিষয়সমূহ.find((t) => t.id === selectedTopic);
 
-  // DeepSeek AI Integration
-  const askAI = async (question: string) => {
+  // Initialize speech recognition
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.lang = "bn-BD";
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = false;
+
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setAskAiQuestion(transcript);
+          setIsListening(false);
+        };
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error("Speech recognition error", event.error);
+          setIsListening(false);
+          showNotification("ভয়েস রিকগনিশনে সমস্যা হয়েছে");
+        };
+
+        recognitionRef.current.onend = () => {
+          setIsListening(false);
+        };
+      }
+    }
+  }, []);
+
+  // DeepSeek AI Integration with Streaming Support
+  const askAI = async (question: string, useStreaming = false) => {
     if (!question.trim()) {
       showNotification("অনুগ্রহ করে কিছু লিখুন");
       return;
     }
 
     setIsAiLoading(true);
-    setAskAiQuestion(question);
-    setAiChatHistory((prev) => [...prev, { type: "user", content: question }]);
+    if (useStreaming) {
+      setIsStreaming(true);
+      setStreamedText("");
+    }
+
+    const timestamp = new Date();
+    setAiChatHistory((prev) => [
+      ...prev,
+      { type: "user", content: question, timestamp },
+    ]);
 
     try {
-      const response = await fetch(`${API_BASE}/chat/farmer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          location: null,
-          stream: false,
-        }),
-      });
+      if (useStreaming) {
+        // Streaming request
+        streamControllerRef.current = new AbortController();
 
-      const data = await response.json();
+        const response = await fetch(
+          `${API_BASE}/chat/stream?question=${encodeURIComponent(question)}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "text/event-stream",
+            },
+            signal: streamControllerRef.current.signal,
+          }
+        );
 
-      if (data.status === "success") {
-        setAiResponse(data);
-        setAiChatHistory((prev) => [
-          ...prev,
-          { type: "ai", content: data.response.answer },
-        ]);
-        showNotification("AI পরামর্শ প্রস্তুত!");
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (reader) {
+          let accumulatedAnswer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split("\n");
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.substring(6);
+                if (data === "[DONE]") {
+                  setIsStreaming(false);
+                  setAiChatHistory((prev) => [
+                    ...prev,
+                    {
+                      type: "ai",
+                      content: accumulatedAnswer,
+                      timestamp: new Date(),
+                    },
+                  ]);
+                  setStreamedText("");
+                  break;
+                }
+
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.content) {
+                    accumulatedAnswer += parsed.content;
+                    setStreamedText(accumulatedAnswer);
+                  }
+                  if (parsed.done) {
+                    setIsStreaming(false);
+                    setAiChatHistory((prev) => [
+                      ...prev,
+                      {
+                        type: "ai",
+                        content: accumulatedAnswer,
+                        timestamp: new Date(),
+                      },
+                    ]);
+                    setStreamedText("");
+                    break;
+                  }
+                } catch (e) {
+                  console.log("Non-JSON data:", data);
+                }
+              }
+            }
+          }
+        }
       } else {
-        throw new Error("Failed to get AI response");
+        // Normal request
+        const response = await fetch(`${API_BASE}/chat/farmer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question,
+            location: location,
+            stream: false,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.status === "success") {
+          setAiResponse(data);
+          setAiChatHistory((prev) => [
+            ...prev,
+            {
+              type: "ai",
+              content: data.response.answer,
+              timestamp: new Date(),
+            },
+          ]);
+          setShowFollowUps(true);
+          showNotification("AI পরামর্শ প্রস্তুত!");
+        } else {
+          throw new Error("Failed to get AI response");
+        }
       }
     } catch (error) {
       console.error("AI Error:", error);
@@ -389,10 +533,48 @@ export default function AdvisoryCenterPage() {
       setAiResponse(fallbackResponse);
       setAiChatHistory((prev) => [
         ...prev,
-        { type: "ai", content: fallbackResponse.response.answer },
+        {
+          type: "ai",
+          content: fallbackResponse.response.answer,
+          timestamp: new Date(),
+        },
       ]);
     } finally {
       setIsAiLoading(false);
+      setIsStreaming(false);
+    }
+  };
+
+  // Voice input handler
+  const startListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
+      setIsListening(true);
+      showNotification("শুনছি... কথা বলুন");
+    } else {
+      showNotification("ভয়েস ইনপুট সমর্থিত নয়");
+    }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+  };
+
+  // Stop streaming
+  const stopStreaming = () => {
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
+      setIsStreaming(false);
+      if (streamedText) {
+        setAiChatHistory((prev) => [
+          ...prev,
+          { type: "ai", content: streamedText, timestamp: new Date() },
+        ]);
+      }
+      setStreamedText("");
     }
   };
 
@@ -568,14 +750,8 @@ export default function AdvisoryCenterPage() {
     setAiResponse(null);
     setAiChatHistory([]);
     setAskAiQuestion("");
+    setShowFollowUps(false);
   };
-
-  // Auto-scroll AI chat
-  useEffect(() => {
-    if (aiChatRef.current) {
-      aiChatRef.current.scrollTop = aiChatRef.current.scrollHeight;
-    }
-  }, [aiChatHistory]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-cyan-50">
@@ -674,6 +850,62 @@ export default function AdvisoryCenterPage() {
           </p>
         </div>
 
+        {/* Weather Widget */}
+        {weatherData && (
+          <div className="max-w-4xl mx-auto mb-8">
+            <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl p-4 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CloudRain className="h-8 w-8" />
+                  <div>
+                    <h3 className="font-bold text-lg">আজকের আবহাওয়া</h3>
+                    <p className="text-sm opacity-90">
+                      {location ? location : "আপনার এলাকা"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="flex items-center gap-2">
+                    <Thermometer className="h-5 w-5" />
+                    <span className="text-2xl font-bold">
+                      {weatherData.temperature}°C
+                    </span>
+                  </div>
+                  <p className="text-sm">{weatherData.condition}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-4 mt-4 text-center">
+                <div className="flex flex-col items-center">
+                  <Droplets className="h-5 w-5 mb-1" />
+                  <span className="text-sm">আর্দ্রতা</span>
+                  <span className="font-bold">{weatherData.humidity}%</span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <CloudRain className="h-5 w-5 mb-1" />
+                  <span className="text-sm">বৃষ্টিপাত</span>
+                  <span className="font-bold">{weatherData.rainfall}</span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <Wind className="h-5 w-5 mb-1" />
+                  <span className="text-sm">বাতাস</span>
+                  <span className="font-bold">
+                    {weatherData.windSpeed} km/h
+                  </span>
+                </div>
+                <button
+                  onClick={() =>
+                    askAI("আজকের আবহাওয়ায় কী ফসলের যত্ন নেব?", true)
+                  }
+                  className="bg-white/20 hover:bg-white/30 rounded-lg p-2 flex flex-col items-center justify-center transition-colors"
+                >
+                  <Bot className="h-5 w-5 mb-1" />
+                  <span className="text-sm">AI পরামর্শ</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* AI Chat Assistant Section */}
         <div className="mb-8 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-2xl p-6 border border-blue-200 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
@@ -694,7 +926,7 @@ export default function AdvisoryCenterPage() {
 
           <div className="grid md:grid-cols-3 gap-6">
             <div className="md:col-span-2">
-              <div className="bg-white rounded-xl border border-blue-200 h-64 overflow-hidden flex flex-col">
+              <div className="bg-white rounded-xl border border-blue-200 h-96 overflow-hidden flex flex-col">
                 {/* Chat Messages */}
                 <div ref={aiChatRef} className="flex-1 overflow-y-auto p-4">
                   {aiChatHistory.length === 0 ? (
@@ -706,6 +938,15 @@ export default function AdvisoryCenterPage() {
                       <p className="text-sm text-blue-500 mt-2">
                         যেমন: "ধান চাষের খরচ কত?"
                       </p>
+                      <div className="mt-4 space-y-2">
+                        <button
+                          onClick={() => startListening()}
+                          className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg flex items-center gap-2 mx-auto"
+                        >
+                          <Mic className="h-4 w-4" />
+                          ভয়েস ইনপুট
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -725,17 +966,29 @@ export default function AdvisoryCenterPage() {
                                 : "bg-blue-50 text-blue-900 rounded-bl-none border border-blue-200"
                             }`}
                           >
-                            <div className="flex items-center gap-2 mb-1">
-                              {msg.type === "user" ? (
-                                <span className="text-xs opacity-80">আপনি</span>
-                              ) : (
-                                <>
-                                  <Bot className="h-3 w-3 text-blue-600" />
-                                  <span className="text-xs opacity-80">
-                                    JolBondhu AI
-                                  </span>
-                                </>
-                              )}
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                {msg.type === "user" ? (
+                                  <>
+                                    <span className="text-xs opacity-80">
+                                      আপনি
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Bot className="h-3 w-3 text-blue-600" />
+                                    <span className="text-xs opacity-80">
+                                      JolBondhu AI
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              <span className="text-xs opacity-70">
+                                {msg.timestamp.toLocaleTimeString("bn-BD", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
                             </div>
                             <div className="prose prose-sm max-w-none">
                               {msg.content.split("\n").map((line, i) => (
@@ -748,7 +1001,39 @@ export default function AdvisoryCenterPage() {
                         </div>
                       ))}
 
-                      {isAiLoading && (
+                      {/* Streaming Response */}
+                      {isStreaming && streamedText && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[80%] bg-blue-50 rounded-2xl rounded-bl-none px-4 py-3 border border-blue-200">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Bot className="h-3 w-3 text-blue-600" />
+                              <span className="text-xs opacity-80">
+                                JolBondhu AI
+                              </span>
+                              <div className="flex gap-1">
+                                <div className="w-1 h-1 bg-blue-400 rounded-full animate-pulse"></div>
+                                <div className="w-1 h-1 bg-blue-400 rounded-full animate-pulse delay-75"></div>
+                                <div className="w-1 h-1 bg-blue-400 rounded-full animate-pulse delay-150"></div>
+                              </div>
+                            </div>
+                            <div className="prose prose-sm max-w-none">
+                              {streamedText.split("\n").map((line, i) => (
+                                <p key={i} className={i > 0 ? "mt-2" : ""}>
+                                  {line}
+                                </p>
+                              ))}
+                            </div>
+                            <button
+                              onClick={stopStreaming}
+                              className="mt-2 text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              থামান
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {isAiLoading && !isStreaming && (
                         <div className="flex justify-start">
                           <div className="bg-blue-50 rounded-2xl rounded-bl-none px-4 py-3">
                             <div className="flex items-center gap-2">
@@ -765,7 +1050,7 @@ export default function AdvisoryCenterPage() {
                 </div>
 
                 {/* Chat Input */}
-                <div className="p-4 border-t border-blue-200">
+                <div className="p-4 border-t border-blue-200 bg-white">
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -773,27 +1058,80 @@ export default function AdvisoryCenterPage() {
                     }}
                     className="flex gap-2"
                   >
-                    <input
-                      type="text"
-                      value={askAiQuestion}
-                      onChange={(e) => setAskAiQuestion(e.target.value)}
-                      placeholder="আপনার প্রশ্ন লিখুন..."
-                      className="flex-1 px-4 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      disabled={isAiLoading}
-                    />
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={askAiQuestion}
+                        onChange={(e) => setAskAiQuestion(e.target.value)}
+                        placeholder="আপনার প্রশ্ন লিখুন বা ভয়েস ব্যবহার করুন..."
+                        className="w-full px-4 py-3 pr-24 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isAiLoading}
+                      />
+                      <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex gap-1">
+                        <button
+                          type="button"
+                          onClick={isListening ? stopListening : startListening}
+                          className={`p-2 rounded ${
+                            isListening
+                              ? "bg-red-100 text-red-600"
+                              : "bg-blue-100 text-blue-600"
+                          }`}
+                        >
+                          {isListening ? (
+                            <MicOff className="h-4 w-4" />
+                          ) : (
+                            <Mic className="h-4 w-4" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => askAI(askAiQuestion, true)}
+                          disabled={isAiLoading || !askAiQuestion.trim()}
+                          className="p-2 bg-green-100 text-green-600 rounded hover:bg-green-200 disabled:opacity-50"
+                        >
+                          <Zap className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
                     <button
                       type="submit"
                       disabled={isAiLoading || !askAiQuestion.trim()}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg hover:from-blue-600 hover:to-cyan-700 transition-all disabled:opacity-50 flex items-center gap-2"
+                      className="px-4 py-3 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg hover:from-blue-600 hover:to-cyan-700 transition-all disabled:opacity-50 flex items-center gap-2"
                     >
-                      {isAiLoading ? (
+                      {isAiLoading && !isStreaming ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <MessageSquare className="h-4 w-4" />
+                        <Send className="h-4 w-4" />
                       )}
-                      <span className="hidden sm:inline">প্রশ্ন করুন</span>
+                      <span className="hidden sm:inline">প্রেরণ করুন</span>
                     </button>
                   </form>
+
+                  {/* Follow-up Questions */}
+                  {showFollowUps &&
+                    aiResponse?.response.follow_up_questions && (
+                      <div className="mt-3 pt-3 border-t border-blue-200">
+                        <p className="text-sm text-blue-600 mb-2">
+                          সংশ্লিষ্ট প্রশ্ন:
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {aiResponse.response.follow_up_questions
+                            .slice(0, 3)
+                            .map((q, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setAskAiQuestion(q);
+                                  askAI(q);
+                                }}
+                                className="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors"
+                              >
+                                {q}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                 </div>
               </div>
             </div>
@@ -834,24 +1172,80 @@ export default function AdvisoryCenterPage() {
                       বন্ধ করুন
                     </button>
                   </div>
-                  <div className="text-sm text-green-700 space-y-1">
+                  <div className="text-sm text-green-700 space-y-2">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-3 w-3" />
                       <span>আস্থার হার: {aiResponse.response.confidence}%</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Lightbulb className="h-3 w-3" />
-                      <span>
+                      <span className="text-xs">
                         সূত্র:{" "}
                         {aiResponse.response.sources.slice(0, 2).join(", ")}
                       </span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-3 w-3" />
+                      <span className="text-xs">
+                        টোকেন:{" "}
+                        {aiResponse.response.metadata?.tokens_used || "N/A"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => askAI(aiResponse.response.question, true)}
+                      className="w-full mt-2 px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg text-sm hover:from-green-600 hover:to-emerald-700 transition-all flex items-center justify-center gap-1"
+                    >
+                      <Zap className="h-3 w-3" />
+                      রিয়েল-টাইম আপডেট
+                    </button>
                   </div>
                 </div>
               )}
+
+              {/* Location Services */}
+              <div className="bg-white p-4 rounded-xl border border-blue-200">
+                <h3 className="font-bold text-blue-900 mb-3">
+                  অবস্থান পরিষেবা
+                </h3>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          (position) => {
+                            const lat = position.coords.latitude;
+                            const lon = position.coords.longitude;
+                            setLocation(`lat:${lat},lon:${lon}`);
+                            showNotification("অবস্থান সেট করা হয়েছে");
+                            askAI("আমার এলাকার জন্য ফসল পরামর্শ দিন");
+                          },
+                          (error) => {
+                            console.error("Geolocation error:", error);
+                            showNotification("অবস্থান পাওয়া যায়নি");
+                          }
+                        );
+                      }
+                    }}
+                    className="w-full text-left p-2 text-sm bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 transition-colors flex items-center gap-2"
+                  >
+                    <Globe className="h-4 w-4" />
+                    আমার এলাকার আবহাওয়া
+                  </button>
+                  <button
+                    onClick={() => fetchWeatherData()}
+                    className="w-full text-left p-2 text-sm bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 transition-colors flex items-center gap-2"
+                  >
+                    <CloudRain className="h-4 w-4" />
+                    আবহাওয়া আপডেট
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Rest of your existing UI remains the same */}
+        {/* ... [Rest of your existing UI code] ... */}
 
         {/* সার্চ বার */}
         <div className="max-w-2xl mx-auto mb-8">
@@ -1332,7 +1726,7 @@ export default function AdvisoryCenterPage() {
                   <span className="text-sm">সরকারি ওয়েবসাইট</span>
                 </button>
                 <button
-                  onClick={() => askAI("আপনার পরামর্শ চাই")}
+                  onClick={() => askAI("আপনার পরামর্শ চাই", true)}
                   className="p-3 bg-white/20 rounded-lg hover:bg-white/30 transition-colors flex flex-col items-center"
                 >
                   <Bot className="h-6 w-6 mb-1" />

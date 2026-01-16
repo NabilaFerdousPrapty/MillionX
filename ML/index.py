@@ -11,6 +11,11 @@ from datetime import datetime
 import pickle
 import os
 from typing import Dict, Any, List, Optional
+import requests
+from datetime import datetime, timedelta
+import json
+import time
+from geopy.distance import geodesic
 # 1. Initialize FastAPI
 app = FastAPI(
     title="JolBondhu Flood Risk Prediction API",
@@ -235,10 +240,10 @@ def get_district_from_coords(lat: float, lon: float) -> dict:
     
     # Default fallback
     return {
-        "name": "সিরাজগঞ্জ",
+        "name": "ঢাকা",
         "lat": 24.4539,
         "lon": 89.7083,
-        "division": "রাজশাহী",
+        "division": "ঢাকা",
         "flood_risk": 0.8
     }
 
@@ -1187,7 +1192,7 @@ async def predict_flood(data: FloodPredictionRequest):
                     "location_risk": 80,
                     "seasonal_risk": 80
                 },
-                "nearest_district": "সিরাজগঞ্জ",
+                "nearest_district": "ঢাকা",
                 "confidence": 87.5,
                 "recommendations": get_flood_recommendations("উচ্চ")
             },
@@ -1277,7 +1282,7 @@ class ChatStreamRequest(BaseModel):
     session_id: Optional[str] = None
 
 # DeepSeek API - COMPLETELY FREE
-DEEPSEEK_API_KEY = "sk-f19fbb82760b475b918a63c984a85224"  # Get from https://platform.deepseek.com/api_keys
+DEEPSEEK_API_KEY = ""  # Get from https://platform.deepseek.com/api_keys
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 # Context for conversation memory
@@ -1821,7 +1826,561 @@ def generate_follow_up(question: str) -> List[str]:
 
 # Other endpoints (flood, crop, emergency) remain the same...
 # Add them from previous code
+class PredictionRequest(BaseModel):
+    lat: float
+    lon: float
+    district: Optional[str] = None
+
+# Simple in-memory cache for risk calculations
+risk_cache = {}
+
+def get_cached_risk_data(lat: float, lon: float, district_name: str = None):
+    """Cached risk calculation"""
+    cache_key = f"{lat:.4f}_{lon:.4f}"
+    
+    # Check cache (5 minute cache)
+    if cache_key in risk_cache:
+        cached_time, cached_data = risk_cache[cache_key]
+        if time.time() - cached_time < 300:  # 5 minutes
+            return cached_data, True, cache_key
+    
+    # Calculate fresh
+    weather_data = get_nasa_rainfall(lat, lon)
+    risk_data = calculate_flood_risk(lat, lon, weather_data)
+    
+    result = {
+        "weather_data": weather_data,
+        "risk_data": risk_data,
+        "district": district_name,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    # Store in cache
+    risk_cache[cache_key] = (time.time(), result)
+    
+    return result, False, cache_key
+
+def get_nasa_rainfall(lat: float, lon: float):
+    """Fetch rainfall data from NASA POWER API"""
+    try:
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)
+        
+        end_date_str = end_date.strftime("%Y%m%d")
+        start_date_str = start_date.strftime("%Y%m%d")
+        
+        url = (
+            "https://power.larc.nasa.gov/api/temporal/daily/point"
+            f"?parameters=PRECTOTCORR,T2M,RH2M"
+            f"&community=ag"
+            f"&latitude={lat}"
+            f"&longitude={lon}"
+            f"&start={start_date_str}"
+            f"&end={end_date_str}"
+            f"&format=JSON"
+        )
+        
+        print(f"Fetching NASA data from: {url}")
+        response = requests.get(url, timeout=30)
+        data = response.json()
+        
+        if "properties" not in data:
+            print(f"NASA API response missing properties: {data}")
+            return {
+                "rainfall_3_days_mm": 0.0,
+                "rainfall_7_days_mm": 0.0,
+                "temperature_c": 25.0,
+                "humidity_percent": 70.0
+            }
+        
+        # Extract data with better error handling
+        try:
+            rain_data = data["properties"]["parameter"]["PRECTOTCORR"]
+            temp_data = data["properties"]["parameter"]["T2M"]
+            humidity_data = data["properties"]["parameter"]["RH2M"]
+            
+            print(f"Sample temp data: {list(temp_data.values())[:3] if temp_data else 'No data'}")
+            
+            # Filter out invalid values (-999)
+            valid_rain = [v for v in rain_data.values() if v is not None and v != -999.0]
+            valid_temp = [v for v in temp_data.values() if v is not None and v != -999.0]
+            valid_humidity = [v for v in humidity_data.values() if v is not None and v != -999.0]
+            
+            # Debug logging
+            print(f"Valid temp values count: {len(valid_temp)}")
+            if valid_temp:
+                print(f"Sample temp values: {valid_temp[:3]}")
+            
+            # Calculate R3 and R7
+            R3 = sum(valid_rain[-3:]) if len(valid_rain) >= 3 else 0
+            R7 = sum(valid_rain[-7:]) if len(valid_rain) >= 7 else sum(valid_rain)
+            
+            # Calculate average temperature and humidity with better validation
+            if valid_temp:
+                avg_temp_kelvin = sum(valid_temp) / len(valid_temp)
+                # Validate temperature range (NASA POWER T2M should be ~250-320 Kelvin)
+                if 200 < avg_temp_kelvin < 350:
+                    avg_temp_c = avg_temp_kelvin - 273.15
+                else:
+                    print(f"Suspicious temperature value: {avg_temp_kelvin}K")
+                    avg_temp_c = 25.0  # Default reasonable temperature
+            else:
+                avg_temp_c = 25.0
+                print("No valid temperature data, using default")
+            
+            if valid_humidity:
+                avg_humidity = sum(valid_humidity) / len(valid_humidity)
+                # Validate humidity range (0-100%)
+                if not (0 <= avg_humidity <= 100):
+                    print(f"Suspicious humidity value: {avg_humidity}%")
+                    avg_humidity = 70.0
+            else:
+                avg_humidity = 70.0
+            
+            result = {
+                "rainfall_3_days_mm": round(R3, 2),
+                "rainfall_7_days_mm": round(R7, 2),
+                "temperature_c": round(avg_temp_c, 1),
+                "humidity_percent": round(avg_humidity, 1)
+            }
+            
+            print(f"Calculated weather data: {result}")
+            return result
+            
+        except KeyError as e:
+            print(f"Missing key in NASA response: {e}")
+            print(f"Available keys: {list(data.get('properties', {}).get('parameter', {}).keys())}")
+            return {
+                "rainfall_3_days_mm": 0.0,
+                "rainfall_7_days_mm": 0.0,
+                "temperature_c": 25.0,
+                "humidity_percent": 70.0
+            }
+        
+    except Exception as e:
+        print(f"NASA API Error for lat={lat}, lon={lon}: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return default values if API fails
+        return {
+            "rainfall_3_days_mm": 0.0,
+            "rainfall_7_days_mm": 0.0,
+            "temperature_c": 25.0,
+            "humidity_percent": 70.0
+        }
+    
+def get_zone_score(lat: float, lon: float):
+    """Calculate flood zone score"""
+    # Northern river basin & delta
+    if lat > 24.5 and lon > 89:
+        return 1.0, "উচ্চ"
+    # Central floodplain
+    elif lat > 23.5:
+        return 0.6, "মধ্যম"
+    # Southern/coastal or higher land
+    else:
+        return 0.3, "নিম্ন"
+
+def get_river_score(lat: float, lon: float):
+    """Calculate river proximity score"""
+    # Jamuna–Padma–Meghna belt
+    if 24.0 < lat < 26.0 and 89.0 < lon < 90.5:
+        return 1.0, "< 1 km"
+    elif 23.0 < lat < 24.0:
+        return 0.6, "1–3 km"
+    else:
+        return 0.3, "> 3 km"
+
+def rain_score(R3: float, R7: float):
+    """Calculate rainfall-based risk score"""
+    if R3 == 0 and R7 == 0:
+        return 0.0
+    score = (0.7 * R3 + 0.3 * R7) / 150
+    return min(score, 1.0)
+
+def calculate_flood_risk(lat: float, lon: float, weather_data: dict):
+    """Calculate comprehensive flood risk"""
+    R3 = weather_data.get("rainfall_3_days_mm", 0)
+    R7 = weather_data.get("rainfall_7_days_mm", 0)
+    
+    # Calculate scores
+    rain_score_val = rain_score(R3, R7)
+    zone_score, zone_label = get_zone_score(lat, lon)
+    river_score, river_distance = get_river_score(lat, lon)
+    
+    # Weighted risk calculation
+    flood_risk = (
+        0.45 * rain_score_val +
+        0.35 * zone_score +
+        0.20 * river_score
+    )
+    
+    # Convert to percentage
+    risk_percent = round(flood_risk * 100, 2)
+    
+    # Determine risk level
+    if risk_percent < 30:
+        risk_level = "নিম্ন"
+    elif risk_percent < 60:
+        risk_level = "মধ্যম"
+    else:
+        risk_level = "উচ্চ"
+    
+    return {
+        "zone_score": round(zone_score, 2),
+        "zone_label": zone_label,
+        "river_score": round(river_score, 2),
+        "river_distance": river_distance,
+        "rain_score": round(rain_score_val, 2),
+        "flood_risk_percent": risk_percent,
+        "risk_level": risk_level,
+        "confidence": round(85.5, 1)
+    }
+
+def generate_advice(risk_level: str):
+    """Generate advice based on risk level"""
+    advice_map = {
+        "নিম্ন": {
+            "title": "সাধারণ সতর্কতা",
+            "message": "বর্তমানে বন্যার ঝুঁকি কম। তবে আবহাওয়ার পরিবর্তনের খবর রাখুন।",
+            "color": "green"
+        },
+        "মধ্যম": {
+            "title": "সতর্কতা প্রয়োজন",
+            "message": "ঝুঁকি মাঝারি পর্যায়ে। প্রস্তুতি নেওয়া শুরু করুন এবং স্থানীয় কর্তৃপক্ষের নির্দেশনা অনুসরণ করুন।",
+            "color": "yellow"
+        },
+        "উচ্চ": {
+            "title": "বিপদসংকেত",
+            "message": "উচ্চ বন্যার ঝুঁকি! নিরাপদ স্থানে সরিয়ে নেওয়ার প্রস্তুতি নিন এবং জরুরি প্রস্তুতি সম্পন্ন করুন।",
+            "color": "red"
+        }
+    }
+    return advice_map.get(risk_level, advice_map["নিম্ন"])
+
+def get_immediate_recommendations(risk_level: str):
+    """Get immediate recommendations"""
+    recommendations = {
+        "নিম্ন": [
+            "আবহাওয়ার পূর্বাভাস পর্যবেক্ষণ করুন",
+            "জরুরি প্রস্তুতির পরিকল্পনা হালনাগাদ করুন"
+        ],
+        "মধ্যম": [
+            "জরুরি প্রস্তুতি তালিকা চেক করুন",
+            "গুরুত্বপূর্ণ নথি ও সম্পদ নিরাপদ স্থানে সরান",
+            "স্থানীয় কর্তৃপক্ষের নির্দেশনা অনুসরণ করুন"
+        ],
+        "উচ্চ": [
+            "জরুরি প্রস্তুতি তালিকা চেক করুন",
+            "জরুরি যোগাযোগের নম্বর প্রস্তুত রাখুন",
+            "উঁচু ও নিরাপদ স্থানে সরিয়ে নিন"
+        ]
+    }
+    return recommendations.get(risk_level, [])
+
+def get_preparation_recommendations(risk_level: str):
+    """Get preparation recommendations"""
+    return [
+        "জরুরি প্রস্তুতি তালিকা প্রস্তুত করুন",
+        "আবহাওয়ার পূর্বাভাস নিয়মিত চেক করুন",
+        "স্থানীয় বন্যা পূর্বাভাস সিস্টেমে সাইন আপ করুন"
+    ]
+
+# GET endpoint for prediction
+@app.get("/predicting")
+async def predict_flood_risk_get(
+    district: Optional[str] = None,
+    lat: float = Query(...),
+    lon: float = Query(...)
+):
+    """GET endpoint for flood risk prediction"""
+    try:
+        print(f"GET request received: district={district}, lat={lat}, lon={lon}")
+        
+        # Use cached calculation
+        cached_result, is_cached, cache_key = get_cached_risk_data(lat, lon, district)
+        
+        weather_data = cached_result["weather_data"]
+        risk_data = cached_result["risk_data"]
+        
+        # Generate advice
+        advice = generate_advice(risk_data["risk_level"])
+        
+        # Prepare response
+        response = {
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "cache_info": "cached" if is_cached else "fresh",
+            "cache_key": cache_key,
+            "location": {
+                "latitude": lat,
+                "longitude": lon,
+                "district": district or "Unknown",
+                "division": "Unknown",
+                "flood_risk_factor": risk_data["flood_risk_percent"]
+            },
+            "weather_data": {
+                "rainfall_mm": weather_data["rainfall_7_days_mm"],
+                "rainfall_3_days": weather_data["rainfall_3_days_mm"],
+                "river_level_m": 3.2,
+                "humidity_percent": weather_data["humidity_percent"],
+                "temperature_c": weather_data["temperature_c"]
+            },
+            "prediction": {
+                "risk_level": risk_data["risk_level"],
+                "risk_score": risk_data["flood_risk_percent"],
+                "confidence": risk_data["confidence"],
+                "probabilities": {
+                    "low": max(0, 100 - risk_data["flood_risk_percent"]),
+                    "medium": 30 if risk_data["risk_level"] == "মধ্যম" else 20,
+                    "high": risk_data["flood_risk_percent"] if risk_data["risk_level"] == "উচ্চ" else 0,
+                    "very_high": 0
+                }
+            },
+            "detailed_scores": risk_data,
+            "advice": advice,
+            "recommendations": {
+                "immediate": get_immediate_recommendations(risk_data["risk_level"]),
+                "preparation": get_preparation_recommendations(risk_data["risk_level"])
+            }
+        }
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error in GET /predicting: {e}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+# POST endpoint for prediction
+@app.post("/predicting")
+async def predict_flood_risk_post(request: PredictionRequest):
+    """POST endpoint for flood risk prediction"""
+    try:
+        print(f"POST request received: district={request.district}, lat={request.lat}, lon={request.lon}")
+        
+        # Use cached calculation
+        cached_result, is_cached, cache_key = get_cached_risk_data(request.lat, request.lon, request.district)
+        
+        weather_data = cached_result["weather_data"]
+        risk_data = cached_result["risk_data"]
+        
+        # Generate advice
+        advice = generate_advice(risk_data["risk_level"])
+        
+        # Prepare response
+        response = {
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "cache_info": "cached" if is_cached else "fresh",
+            "cache_key": cache_key,
+            "location": {
+                "latitude": request.lat,
+                "longitude": request.lon,
+                "district": request.district or "Unknown",
+                "division": "Unknown",
+                "flood_risk_factor": risk_data["flood_risk_percent"]
+            },
+            "weather_data": {
+                "rainfall_mm": weather_data["rainfall_7_days_mm"],
+                "rainfall_3_days": weather_data["rainfall_3_days_mm"],
+                "river_level_m": 3.2,
+                "humidity_percent": weather_data["humidity_percent"],
+                "temperature_c": weather_data["temperature_c"]
+            },
+            "prediction": {
+                "risk_level": risk_data["risk_level"],
+                "risk_score": risk_data["flood_risk_percent"],
+                "confidence": risk_data["confidence"],
+                "probabilities": {
+                    "low": max(0, 100 - risk_data["flood_risk_percent"]),
+                    "medium": 30 if risk_data["risk_level"] == "মধ্যম" else 20,
+                    "high": risk_data["flood_risk_percent"] if risk_data["risk_level"] == "উচ্চ" else 0,
+                    "very_high": 0
+                }
+            },
+            "detailed_scores": risk_data,
+            "advice": advice,
+            "recommendations": {
+                "immediate": get_immediate_recommendations(risk_data["risk_level"]),
+                "preparation": get_preparation_recommendations(risk_data["risk_level"])
+            }
+        }
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error in POST /predicting: {e}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+# Districts data
+def get_bangladesh_districts():
+    """Return list of all 64 Bangladesh districts"""
+    return [
+        # Dhaka Division (13)
+        {"name":"ঢাকা","division":"ঢাকা","latitude":23.8103,"longitude":90.4125},
+        {"name":"গাজীপুর","division":"ঢাকা","latitude":23.9999,"longitude":90.4203},
+        {"name":"নারায়ণগঞ্জ","division":"ঢাকা","latitude":23.6138,"longitude":90.5000},
+        {"name":"নরসিংদী","division":"ঢাকা","latitude":23.9322,"longitude":90.7154},
+        {"name":"মুন্সিগঞ্জ","division":"ঢাকা","latitude":23.5422,"longitude":90.5305},
+        {"name":"মানিকগঞ্জ","division":"ঢাকা","latitude":23.8617,"longitude":90.0003},
+        {"name":"টাঙ্গাইল","division":"ঢাকা","latitude":24.2513,"longitude":89.9167},
+        {"name":"কিশোরগঞ্জ","division":"ঢাকা","latitude":24.4449,"longitude":90.7766},
+        {"name":"ফরিদপুর","division":"ঢাকা","latitude":23.6071,"longitude":89.8420},
+        {"name":"মাদারীপুর","division":"ঢাকা","latitude":23.1641,"longitude":90.1890},
+        {"name":"রাজবাড়ী","division":"ঢাকা","latitude":23.7574,"longitude":89.6440},
+        {"name":"গোপালগঞ্জ","division":"ঢাকা","latitude":23.0050,"longitude":89.8266},
+        {"name":"শরীয়তপুর","division":"ঢাকা","latitude":23.2423,"longitude":90.4348},
+
+        # Chattogram Division (11)
+        {"name":"চট্টগ্রাম","division":"চট্টগ্রাম","latitude":22.3569,"longitude":91.7832},
+        {"name":"কক্সবাজার","division":"চট্টগ্রাম","latitude":21.4272,"longitude":92.0058},
+        {"name":"কুমিল্লা","division":"চট্টগ্রাম","latitude":23.4607,"longitude":91.1809},
+        {"name":"ব্রাহ্মণবাড়িয়া","division":"চট্টগ্রাম","latitude":23.9571,"longitude":91.1110},
+        {"name":"ফেনী","division":"চট্টগ্রাম","latitude":23.0159,"longitude":91.3976},
+        {"name":"নোয়াখালী","division":"চট্টগ্রাম","latitude":22.8696,"longitude":91.0994},
+        {"name":"লক্ষ্মীপুর","division":"চট্টগ্রাম","latitude":22.9447,"longitude":90.8282},
+        {"name":"চাঁদপুর","division":"চট্টগ্রাম","latitude":23.2333,"longitude":90.6714},
+        {"name":"খাগড়াছড়ি","division":"চট্টগ্রাম","latitude":23.1193,"longitude":91.9847},
+        {"name":"রাঙামাটি","division":"চট্টগ্রাম","latitude":22.7324,"longitude":92.2985},
+        {"name":"বান্দরবান","division":"চট্টগ্রাম","latitude":22.1953,"longitude":92.2184},
+
+        # Sylhet Division (4)
+        {"name":"সিলেট","division":"সিলেট","latitude":24.9045,"longitude":91.8611},
+        {"name":"সুনামগঞ্জ","division":"সিলেট","latitude":25.0658,"longitude":91.3950},
+        {"name":"হবিগঞ্জ","division":"সিলেট","latitude":24.3745,"longitude":91.4156},
+        {"name":"মৌলভীবাজার","division":"সিলেট","latitude":24.4829,"longitude":91.7774},
+
+        # Rajshahi Division (8)
+        {"name":"রাজশাহী","division":"রাজশাহী","latitude":24.3745,"longitude":88.6042},
+        {"name":"নাটোর","division":"রাজশাহী","latitude":24.4206,"longitude":89.0003},
+        {"name":"নওগাঁ","division":"রাজশাহী","latitude":24.8326,"longitude":88.9249},
+        {"name":"চাঁপাইনবাবগঞ্জ","division":"রাজশাহী","latitude":24.5965,"longitude":88.2775},
+        {"name":"পাবনা","division":"রাজশাহী","latitude":23.9985,"longitude":89.2336},
+        {"name":"বগুড়া","division":"রাজশাহী","latitude":24.8481,"longitude":89.3730},
+        {"name":"জয়পুরহাট","division":"রাজশাহী","latitude":25.1015,"longitude":89.0270},
+        {"name":"সিরাজগঞ্জ","division":"রাজশাহী","latitude":24.4534,"longitude":89.7006},
+
+        # Rangpur Division (8)
+        {"name":"রংপুর","division":"রংপুর","latitude":25.7439,"longitude":89.2752},
+        {"name":"দিনাজপুর","division":"রংপুর","latitude":25.6279,"longitude":88.6332},
+        {"name":"ঠাকুরগাঁও","division":"রংপুর","latitude":26.0337,"longitude":88.4690},
+        {"name":"পঞ্চগড়","division":"রংপুর","latitude":26.3354,"longitude":88.5517},
+        {"name":"নীলফামারী","division":"রংপুর","latitude":25.9318,"longitude":88.8560},
+        {"name":"লালমনিরহাট","division":"রংপুর","latitude":25.9923,"longitude":89.2847},
+        {"name":"কুড়িগ্রাম","division":"রংপুর","latitude":25.8054,"longitude":89.6362},
+        {"name":"গাইবান্ধা","division":"রংপুর","latitude":25.3290,"longitude":89.5425},
+
+        # Khulna Division (8)
+        {"name":"খুলনা","division":"খুলনা","latitude":22.8456,"longitude":89.5403},
+        {"name":"বাগেরহাট","division":"খুলনা","latitude":22.6516,"longitude":89.7859},
+        {"name":"সাতক্ষীরা","division":"খুলনা","latitude":22.7085,"longitude":89.0718},
+        {"name":"যশোর","division":"খুলনা","latitude":23.1667,"longitude":89.2089},
+        {"name":"নড়াইল","division":"খুলনা","latitude":23.1550,"longitude":89.4950},
+        {"name":"মাগুরা","division":"খুলনা","latitude":23.4873,"longitude":89.4194},
+        {"name":"ঝিনাইদহ","division":"খুলনা","latitude":23.5450,"longitude":89.1530},
+        {"name":"কুষ্টিয়া","division":"খুলনা","latitude":23.9013,"longitude":89.1208},
+
+        # Barishal Division (6)
+        {"name":"বরিশাল","division":"বরিশাল","latitude":22.7010,"longitude":90.3535},
+        {"name":"ভোলা","division":"বরিশাল","latitude":22.6859,"longitude":90.6482},
+        {"name":"পটুয়াখালী","division":"বরিশাল","latitude":22.3596,"longitude":90.3299},
+        {"name":"ঝালকাঠি","division":"বরিশাল","latitude":22.6406,"longitude":90.1987},
+        {"name":"পিরোজপুর","division":"বরিশাল","latitude":22.5841,"longitude":89.9720},
+        {"name":"বরগুনা","division":"বরিশাল","latitude":22.0953,"longitude":90.1121},
+
+        # Mymensingh Division (4)
+        {"name":"ময়মনসিংহ","division":"ময়মনসিংহ","latitude":24.7471,"longitude":90.4203},
+        {"name":"জামালপুর","division":"ময়মনসিংহ","latitude":24.9375,"longitude":89.9370},
+        {"name":"শেরপুর","division":"ময়মনসিংহ","latitude":25.0205,"longitude":90.0153},
+        {"name":"নেত্রকোণা","division":"ময়মনসিংহ","latitude":24.8835,"longitude":90.7313},
+    ]
+
+@app.get("/alldistricts")
+async def get_districts():
+    """Get list of districts with real-time risk data"""
+    try:
+        print("Fetching districts data...")
+        districts_base = get_bangladesh_districts()
+        districts_with_risk = []
+        
+        for district in districts_base:
+            try:
+                # Get weather data
+                weather_data = get_nasa_rainfall(district["latitude"], district["longitude"])
+                
+                # Calculate risk
+                risk_data = calculate_flood_risk(
+                    district["latitude"], 
+                    district["longitude"], 
+                    weather_data
+                )
+                
+                # Add to result
+                district_with_risk = {
+                    **district,
+                    "flood_risk_level": risk_data["risk_level"],
+                    "flood_risk_score": risk_data["flood_risk_percent"],
+                    "rainfall_mm": weather_data["rainfall_7_days_mm"],
+                    "temperature_c": weather_data["temperature_c"],
+                    "humidity_percent": weather_data["humidity_percent"],
+                    "last_updated": datetime.now().isoformat()
+                }
+                
+                districts_with_risk.append(district_with_risk)
+                
+            except Exception as e:
+                print(f"Error processing {district['name']}: {e}")
+                districts_with_risk.append({
+                    **district,
+                    "flood_risk_level": "তথ্য নেই",
+                    "flood_risk_score": 0.0,
+                    "rainfall_mm": 0.0,
+                    "temperature_c": 0.0,
+                    "humidity_percent": 0.0,
+                    "last_updated": datetime.now().isoformat(),
+                    "error": "ডেটা লোড করতে সমস্যা"
+                })
+        
+        return {
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "districts": districts_with_risk,
+            "count": len(districts_with_risk),
+            "data_source": "NASA POWER API"
+        }
+        
+    except Exception as e:
+        print(f"Error in /alldistricts: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching district data: {str(e)}")
+
+# Health check endpoint
+@app.get("/")
+async def root():
+    return {"message": "Flood Risk Prediction API", "status": "running"}
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {
+            "GET /predicting": "Get flood risk prediction",
+            "POST /predicting": "Post flood risk prediction", 
+            "GET /alldistricts": "Get all districts with risk data",
+            "GET /health": "Health check"
+        }
+    }
+
+# Clear cache endpoint (for debugging)
+@app.delete("/cache")
+async def clear_cache():
+    global risk_cache
+    count = len(risk_cache)
+    risk_cache = {}
+    return {"message": f"Cache cleared ({count} items removed)"}
 
 if __name__ == "__main__":
-    print("🚀 Starting JolBondhu AI Assistant...")
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
