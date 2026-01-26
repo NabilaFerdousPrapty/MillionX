@@ -1281,7 +1281,7 @@ class ChatStreamRequest(BaseModel):
     question: str
     session_id: Optional[str] = None
 
-# DeepSeek API - COMPLETELY FREE
+
 DEEPSEEK_API_KEY = ""  # Get from https://platform.deepseek.com/api_keys
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
