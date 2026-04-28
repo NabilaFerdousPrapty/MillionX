@@ -1,3 +1,4 @@
+// app/emergency/page.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -21,6 +22,9 @@ import {
   Map as MapIcon,
   Globe,
 } from "lucide-react";
+import { useEmergencyData } from "@/hooks/useEmergencyData";
+import { BangladeshEmergencyUtils } from "../utils/bangladeshEmergencyUtils";
+import DistrictSelector from "@/components/DistrictSelector";
 
 // Types
 interface UserLocation {
@@ -242,72 +246,11 @@ const জরুরি_পদ্ধতি: EmergencyProcedure[] = [
   },
 ];
 
-// Real Bangladesh emergency facilities
-const বাংলাদেশ_জরুরি_সুবিধা: Omit<
-  NearbyFacility,
-  "distance" | "distanceText"
->[] = [
-  {
-    type: "সাইক্লোন শেল্টার",
-    name: "মোহাম্মদপুর সাইক্লোন শেল্টার",
-    capacity: "৫০০ জন",
-    contact: "ইউপি চেয়ারম্যান - ০১৭১২৩৪৫৬৭৮",
-    lat: 23.7603,
-    lon: 90.3625,
-    address: "মোহাম্মদপুর, ঢাকা",
-  },
-  {
-    type: "হাসপাতাল",
-    name: "ঢাকা মেডিকেল কলেজ হাসপাতাল",
-    capacity: "২৩০০ বেড",
-    contact: "ডাক্তার দপ্তর - ০২-৫৫১৬৫০০১",
-    lat: 23.7289,
-    lon: 90.3944,
-    address: "বকশীবাজার, ঢাকা",
-  },
-  {
-    type: "ফায়ার স্টেশন",
-    name: "ফায়ার স্টেশন অ্যান্ড সিভিল ডিফেন্স",
-    capacity: "১০টি যান",
-    contact: "কন্ট্রোল রুম - ০২-৯৫৫৫৫৫৫",
-    lat: 23.731,
-    lon: 90.411,
-    address: "বিদ্যুৎ ভবন, ঢাকা",
-  },
-  {
-    type: "খাদ্য গুদাম",
-    name: "উপজেলা খাদ্য গুদাম",
-    capacity: "৫০ টন",
-    contact: "খাদ্য কর্মকর্তা - ০১৯১২৩৪৫৬৭৮",
-    lat: 23.7803,
-    lon: 90.3825,
-    address: "উপজেলা কমপ্লেক্স, ঢাকা",
-  },
-  {
-    type: "পশু চিকিৎসা কেন্দ্র",
-    name: "প্রাণী সম্পদ হাসপাতাল",
-    capacity: "২০০ প্রাণী",
-    contact: "ডাঃ করিম - ০১৯৮৭৬৫৪৩২১",
-    lat: 23.8503,
-    lon: 90.3225,
-    address: "মিরপুর, ঢাকা",
-  },
-  {
-    type: "জরুরি আশ্রয় কেন্দ্র",
-    name: "স্থানীয় স্কুল ভবন",
-    capacity: "৩০০ জন",
-    contact: "প্রধান শিক্ষক - ০১৭৫৫৫৫৫৫৫৫",
-    lat: 23.8103,
-    lon: 90.3625,
-    address: "ধানমন্ডি, ঢাকা",
-  },
-];
-
 export default function EmergencyPage() {
   const [selectedCategory, setSelectedCategory] = useState("জরুরি সাহায্য");
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [nearbyFacilities, setNearbyFacilities] = useState<NearbyFacility[]>(
-    []
+    [],
   );
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -322,6 +265,17 @@ export default function EmergencyPage() {
   const [isCalling, setIsCalling] = useState<string | null>(null);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const [selectedManualDistrict, setSelectedManualDistrict] = useState<{
+    division: string;
+    district: string;
+  } | null>(null);
+  const [showDistrictTips, setShowDistrictTips] = useState(false);
+
+  // Use the emergency data hook
+  const { data: apiData, alerts: apiAlerts } = useEmergencyData(
+    userLocation?.lat,
+    userLocation?.lon,
+  );
 
   // Check if we're on client side
   useEffect(() => {
@@ -333,7 +287,7 @@ export default function EmergencyPage() {
     lat1: number,
     lon1: number,
     lat2: number,
-    lon2: number
+    lon2: number,
   ): number => {
     const R = 6371;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -374,7 +328,7 @@ export default function EmergencyPage() {
         let address = "";
         try {
           const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&accept-language=bn`
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&accept-language=bn`,
           );
           const data = await response.json();
 
@@ -403,24 +357,30 @@ export default function EmergencyPage() {
         };
 
         setUserLocation(newLocation);
+        setSelectedManualDistrict(null); // Clear manual selection when using GPS
 
-        // Calculate distances to facilities
-        const facilitiesWithDistance = বাংলাদেশ_জরুরি_সুবিধা
-          .map((facility) => ({
-            ...facility,
-            distance: calculateDistance(
-              latitude,
-              longitude,
-              facility.lat,
-              facility.lon
-            ),
-            distanceText: formatDistance(
-              calculateDistance(latitude, longitude, facility.lat, facility.lon)
-            ),
-          }))
-          .sort((a, b) => a.distance - b.distance);
+        // Calculate distances to facilities from the utils
+        const nearestFromUtils = BangladeshEmergencyUtils.findNearestFacilities(
+          latitude,
+          longitude,
+          4,
+        );
 
-        setNearbyFacilities(facilitiesWithDistance.slice(0, 4));
+        const facilitiesWithDistance = nearestFromUtils.map(
+          (facility: any) => ({
+            type: facility.type,
+            name: facility.name,
+            distance: facility.distance,
+            distanceText: facility.distanceText,
+            capacity: facility.capacity?.toString() || "উপলব্ধ",
+            contact: facility.contact,
+            lat: facility.lat,
+            lon: facility.lon,
+            address: facility.address,
+          }),
+        );
+
+        setNearbyFacilities(facilitiesWithDistance);
         setIsLocating(false);
       },
       (error) => {
@@ -428,7 +388,7 @@ export default function EmergencyPage() {
         switch (error.code) {
           case error.PERMISSION_DENIED:
             setLocationError(
-              "লোকেশন অনুমতি অস্বীকৃত হয়েছে। ব্রাউজার সেটিংস চেক করুন।"
+              "লোকেশন অনুমতি অস্বীকৃত হয়েছে। ব্রাউজার সেটিংস চেক করুন।",
             );
             break;
           case error.POSITION_UNAVAILABLE:
@@ -436,7 +396,7 @@ export default function EmergencyPage() {
             break;
           case error.TIMEOUT:
             setLocationError(
-              "লোকেশন রিকোয়েস্ট সময় শেষ হয়েছে। আবার চেষ্টা করুন।"
+              "লোকেশন রিকোয়েস্ট সময় শেষ হয়েছে। আবার চেষ্টা করুন।",
             );
             break;
           default:
@@ -447,7 +407,7 @@ export default function EmergencyPage() {
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 0,
-      }
+      },
     );
   };
 
@@ -458,6 +418,89 @@ export default function EmergencyPage() {
     }
   }, [isClient]);
 
+  // Update facilities from API data
+  useEffect(() => {
+    if (
+      apiData?.nearestFacilities &&
+      apiData.nearestFacilities.length > 0 &&
+      userLocation &&
+      !selectedManualDistrict
+    ) {
+      const enhancedFacilities = apiData.nearestFacilities.map(
+        (apiFacility: any) => ({
+          type: apiFacility.type,
+          name: apiFacility.name,
+          distance: apiFacility.distance || 0,
+          distanceText: apiFacility.distance
+            ? apiFacility.distance < 1
+              ? `${Math.round(apiFacility.distance * 1000)} মিটার`
+              : `${apiFacility.distance.toFixed(1)} কিমি`
+            : "অজানা",
+          capacity: apiFacility.capacity?.toString() || "উপলব্ধ",
+          contact: apiFacility.contact,
+          lat: apiFacility.lat,
+          lon: apiFacility.lon,
+          address: apiFacility.address || "",
+        }),
+      );
+
+      if (enhancedFacilities.length > 0) {
+        setNearbyFacilities(enhancedFacilities);
+      }
+    }
+  }, [apiData, userLocation, selectedManualDistrict]);
+
+  // Handle manual district selection
+  const handleManualDistrictSelect = (division: string, district: string) => {
+    setSelectedManualDistrict({ division, district });
+    setShowDistrictTips(true);
+    const facilities = BangladeshEmergencyUtils.getDistrictFacilities(
+      division,
+      district,
+    );
+
+    if (facilities.length > 0) {
+      const manualFacilities = facilities.map((facility) => ({
+        type: facility.type,
+        name: facility.name,
+        distance: 0,
+        distanceText: "স্থানীয়",
+        capacity: facility.capacity?.toString() || "উপলব্ধ",
+        contact: facility.contact,
+        lat: facility.lat,
+        lon: facility.lon,
+        address: facility.address,
+      }));
+      setNearbyFacilities(manualFacilities);
+    } else {
+      // If no specific facilities found, show default ones
+      setNearbyFacilities([
+        {
+          type: "জেলা প্রশাসক অফিস",
+          name: `${district} জেলা প্রশাসক অফিস`,
+          distance: 0,
+          distanceText: "স্থানীয়",
+          capacity: "সকল ধরনের সেবা",
+          contact: "স্থানীয় অফিসে যোগাযোগ করুন",
+          lat: 23.8103,
+          lon: 90.4125,
+          address: `${district} জেলা সদর`,
+        },
+        {
+          type: "হাসপাতাল",
+          name: `${district} সদর হাসপাতাল`,
+          distance: 0,
+          distanceText: "স্থানীয়",
+          capacity: "সেবা প্রদানরত",
+          contact: "স্থানীয় হাসপাতাল",
+          lat: 23.8103,
+          lon: 90.4125,
+          address: `${district} জেলা সদর`,
+        },
+      ]);
+    }
+  };
+
   const handleCall = (phoneNumber: string) => {
     if (!isClient) return;
 
@@ -467,7 +510,11 @@ export default function EmergencyPage() {
           `স্থানীয় অফিস নম্বর পেতে আপনার স্থানীয় ইউনিয়ন পরিষদে যোগাযোগ করুন।\n\nআপনার অবস্থান: ${
             userLocation.address ||
             userLocation.lat.toFixed(4) + ", " + userLocation.lon.toFixed(4)
-          }`
+          }`,
+        );
+      } else if (selectedManualDistrict) {
+        alert(
+          `${selectedManualDistrict.district} জেলা প্রশাসক অফিসে যোগাযোগ করুন।\n\nজরুরি নম্বর: ৯৯৯`,
         );
       } else {
         alert("স্থানীয় অফিস নম্বর পেতে আপনার অবস্থান শনাক্ত করুন।");
@@ -499,6 +546,8 @@ export default function EmergencyPage() {
         userLocation.lat.toFixed(4) + ", " + userLocation.lon.toFixed(4)
       }\n`;
       message += `Google Maps: https://maps.google.com/?q=${userLocation.lat},${userLocation.lon}`;
+    } else if (selectedManualDistrict) {
+      message += `আমার অবস্থান: ${selectedManualDistrict.district} জেলা\n`;
     } else {
       message += "অবস্থান: শনাক্ত করা যায়নি";
     }
@@ -511,22 +560,32 @@ export default function EmergencyPage() {
     if (!isClient) return;
 
     const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}&query_place_id=${encodeURIComponent(
-      name
+      name,
     )}`;
     window.open(url, "_blank");
   };
 
   const handleShareLocation = () => {
-    if (!isClient || !userLocation) {
+    if (!isClient) {
       alert("আপনার অবস্থান শনাক্ত করুন প্রথমে।");
       return;
     }
 
-    const shareText = `আমার জরুরি অবস্থান:\n${
-      userLocation.address || "অবস্থান"
-    }\nGoogle Maps: https://maps.google.com/?q=${userLocation.lat},${
-      userLocation.lon
-    }\nসাহায্য প্রয়োজন!`;
+    if (!userLocation && !selectedManualDistrict) {
+      alert("আপনার অবস্থান শনাক্ত করুন বা ম্যানুয়ালি জেলা নির্বাচন করুন।");
+      return;
+    }
+
+    let shareText = "";
+    if (userLocation) {
+      shareText = `আমার জরুরি অবস্থান:\n${
+        userLocation.address || "অবস্থান"
+      }\nGoogle Maps: https://maps.google.com/?q=${userLocation.lat},${
+        userLocation.lon
+      }\nসাহায্য প্রয়োজন!`;
+    } else if (selectedManualDistrict) {
+      shareText = `আমার অবস্থান: ${selectedManualDistrict.district} জেলা, ${selectedManualDistrict.division} বিভাগ\nসাহায্য প্রয়োজন!`;
+    }
 
     if (navigator.share) {
       navigator.share({
@@ -542,24 +601,25 @@ export default function EmergencyPage() {
   const handleRequestAmbulance = () => {
     if (!isClient) return;
 
-    if (!userLocation) {
-      const getLocation = window.confirm(
-        "অ্যাম্বুলেন্স ডাকতে আপনার অবস্থান প্রয়োজন। এখনি অবস্থান শনাক্ত করবেন?"
+    if (!userLocation && !selectedManualDistrict) {
+      const choice = window.confirm(
+        "অ্যাম্বুলেন্স ডাকতে আপনার অবস্থান প্রয়োজন। এখনি অবস্থান শনাক্ত করবেন?",
       );
-      if (getLocation) {
+      if (choice) {
         getUserLocation();
       }
       return;
     }
 
+    const locationText = userLocation
+      ? `${userLocation.address || "অবস্থান শনাক্ত করা হয়েছে"}\nঅক্ষাংশ: ${userLocation.lat.toFixed(6)}\nদ্রাঘিমাংশ: ${userLocation.lon.toFixed(6)}`
+      : `${selectedManualDistrict?.district} জেলা, ${selectedManualDistrict?.division} বিভাগ`;
+
     const confirmMessage = `
 🚨 অ্যাম্বুলেন্স রিকোয়েস্ট 🚨
 
 আপনার অবস্থান:
-${userLocation.address || "অবস্থান শনাক্ত করা হয়েছে"}
-
-অক্ষাংশ: ${userLocation.lat.toFixed(6)}
-দ্রাঘিমাংশ: ${userLocation.lon.toFixed(6)}
+${locationText}
 
 আপনি কি নিশ্চিত যে জরুরি অ্যাম্বুলেন্স প্রয়োজন?
     `.trim();
@@ -582,12 +642,16 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
   };
 
   const getNearestPoliceStation = () => {
+    if (selectedManualDistrict) {
+      return `${selectedManualDistrict.district} জেলা থানা`;
+    }
+
     if (!userLocation || nearbyFacilities.length === 0) {
       return "স্থানীয় থানা";
     }
 
     const policeStations = nearbyFacilities.filter(
-      (f) => f.type.includes("পুলিশ") || f.type.includes("থানা")
+      (f) => f.type.includes("পুলিশ") || f.type.includes("থানা"),
     );
 
     if (policeStations.length > 0) {
@@ -596,6 +660,9 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
 
     return "স্থানীয় থানা";
   };
+
+  // Combine alerts
+  const allAlerts = [...emergencyAlerts, ...(apiAlerts || [])];
 
   // Don't render location-dependent UI during SSR
   if (!isClient) {
@@ -648,12 +715,12 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                 <div className="flex items-center gap-3">
                   <div
                     className={`p-2 rounded-lg ${
-                      userLocation
+                      userLocation || selectedManualDistrict
                         ? "bg-green-100 text-green-600"
                         : "bg-red-100 text-red-600"
                     }`}
                   >
-                    {userLocation ? (
+                    {userLocation || selectedManualDistrict ? (
                       <Target className="h-6 w-6" />
                     ) : (
                       <Compass className="h-6 w-6" />
@@ -663,14 +730,18 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                     <h3 className="font-bold text-gray-900">
                       {userLocation
                         ? "আপনার অবস্থান শনাক্ত করা হয়েছে"
-                        : "অবস্থান শনাক্ত করা হয়নি"}
+                        : selectedManualDistrict
+                          ? "ম্যানুয়ালি জেলা নির্বাচিত"
+                          : "অবস্থান শনাক্ত করা হয়নি"}
                     </h3>
                     <p className="text-sm text-gray-600">
                       {userLocation
                         ? `আপডেট: ${userLocation.timestamp.toLocaleTimeString(
-                            "bn-BD"
+                            "bn-BD",
                           )}`
-                        : "অবস্থান শনাক্ত করতে বাটন চাপুন"}
+                        : selectedManualDistrict
+                          ? `নির্বাচিত: ${selectedManualDistrict.district}, ${selectedManualDistrict.division}`
+                          : "অবস্থান শনাক্ত করতে বাটন চাপুন"}
                     </p>
                   </div>
                 </div>
@@ -687,7 +758,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                   ) : (
                     <>
                       <Navigation className="h-4 w-4" />
-                      <span>অবস্থান শনাক্ত করুন</span>
+                      <span>জিপিএস অবস্থান</span>
                     </>
                   )}
                 </button>
@@ -720,14 +791,6 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                       </p>
                     </div>
                   </div>
-
-                  <button
-                    onClick={handleShareLocation}
-                    className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg flex items-center justify-center gap-2 hover:from-purple-600 hover:to-pink-700 transition-all"
-                  >
-                    <Share2 className="h-5 w-5" />
-                    <span>জরুরি অবস্থান শেয়ার করুন</span>
-                  </button>
                 </>
               )}
 
@@ -739,12 +802,53 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
               )}
             </div>
           </div>
+
+          {/* District Selector */}
+          <div className="mt-6 max-w-2xl mx-auto">
+            <DistrictSelector
+              onSelect={handleManualDistrictSelect}
+              onUseCurrentLocation={getUserLocation}
+            />
+          </div>
+
+          {/* Manual District Tips */}
+          {showDistrictTips && selectedManualDistrict && (
+            <div className="mt-4 max-w-2xl mx-auto">
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 shadow-md">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold text-green-800 flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    {selectedManualDistrict.district} জেলার জন্য বিশেষ পরামর্শ
+                  </h4>
+                  <button
+                    onClick={() => setShowDistrictTips(false)}
+                    className="text-green-600 hover:text-green-800"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <ul className="space-y-2">
+                  {BangladeshEmergencyUtils.getPreparednessTips(
+                    selectedManualDistrict.district,
+                  ).map((tip, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-start gap-2 text-sm text-green-700"
+                    >
+                      <span className="text-green-500">✓</span>
+                      {tip}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* বাম কলাম - জরুরি নম্বর */}
           <div className="lg:col-span-2">
-            <div className="bangladeshi-card p-6">
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-red-200">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <Phone className="h-6 w-6 text-red-600" />
@@ -798,8 +902,8 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                                   userLocation.lat,
                                   userLocation.lon,
                                   contact.lat,
-                                  contact.lon
-                                )
+                                  contact.lon,
+                                ),
                               )}
                             </p>
                           )}
@@ -856,7 +960,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                               handleShowOnMap(
                                 contact.lat,
                                 contact.lon || 90.4125,
-                                contact.name
+                                contact.name,
                               )
                             }
                             className="w-full py-2 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
@@ -879,7 +983,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                   </div>
                   <button
                     onClick={() =>
-                      handleTextToSpeech(emergencyAlerts[0]?.message || "")
+                      handleTextToSpeech(allAlerts[0]?.message || "")
                     }
                     className="text-sm text-red-600 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg"
                   >
@@ -888,22 +992,22 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                 </div>
 
                 <div className="space-y-3">
-                  {emergencyAlerts.map((alert, index) => (
+                  {allAlerts.slice(0, 3).map((alert, index) => (
                     <div
                       key={index}
                       className={`p-4 bg-gradient-to-r ${
                         alert.priority === "high"
                           ? "from-red-500 to-orange-600"
                           : alert.priority === "medium"
-                          ? "from-orange-500 to-amber-600"
-                          : "from-yellow-500 to-amber-600"
+                            ? "from-orange-500 to-amber-600"
+                            : "from-yellow-500 to-amber-600"
                       } rounded-xl text-white`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <h5 className="font-bold">{alert.title}</h5>
                         <span className="text-xs opacity-90">
                           {new Date(alert.timestamp).toLocaleTimeString(
-                            "bn-BD"
+                            "bn-BD",
                           )}
                         </span>
                       </div>
@@ -915,7 +1019,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
             </div>
 
             {/* নিকটস্থ সুবিধার তালিকা */}
-            <div className="bangladeshi-card p-6 mt-8">
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-emerald-200 mt-8">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <Globe className="h-6 w-6 text-emerald-600" />
@@ -968,7 +1072,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                             handleShowOnMap(
                               facility.lat,
                               facility.lon,
-                              facility.name
+                              facility.name,
                             )
                           }
                           className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-emerald-100 rounded-lg"
@@ -993,7 +1097,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
             </div>
 
             {/* জরুরি পদ্ধতি */}
-            <div className="bangladeshi-card p-6 mt-8">
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-orange-200 mt-8">
               <div className="flex items-center gap-3 mb-6">
                 <Shield className="h-6 w-6 text-orange-600" />
                 <h2 className="text-xl font-bold text-orange-900">
@@ -1031,7 +1135,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
           {/* ডান কলাম - অতিরিক্ত তথ্য */}
           <div className="space-y-6">
             {/* দ্রুত সাহায্য */}
-            <div className="bangladeshi-card p-6">
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-purple-200">
               <div className="flex items-center gap-3 mb-6">
                 <Ambulance className="h-6 w-6 text-purple-600" />
                 <h2 className="text-xl font-bold text-purple-900">
@@ -1042,8 +1146,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
               <div className="space-y-4">
                 <button
                   onClick={handleRequestAmbulance}
-                  disabled={!userLocation}
-                  className="w-full p-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl flex items-center justify-center gap-3 hover:from-purple-600 hover:to-pink-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full p-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl flex items-center justify-center gap-3 hover:from-purple-600 hover:to-pink-700 transition-all shadow-lg hover:shadow-xl"
                 >
                   <Ambulance className="h-6 w-6" />
                   <div className="text-left">
@@ -1056,15 +1159,15 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
 
                 <button
                   onClick={() => {
-                    if (userLocation) {
+                    if (userLocation || selectedManualDistrict) {
                       const nearestHospital = nearbyFacilities.find((f) =>
-                        f.type.includes("হাসপাতাল")
+                        f.type.includes("হাসপাতাল"),
                       );
                       if (nearestHospital) {
                         handleShowOnMap(
                           nearestHospital.lat,
                           nearestHospital.lon,
-                          nearestHospital.name
+                          nearestHospital.name,
                         );
                       } else {
                         alert("নিকটস্থ হাসপাতাল পাওয়া যায়নি।");
@@ -1086,8 +1189,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
 
                 <button
                   onClick={handleShareLocation}
-                  disabled={!userLocation}
-                  className="w-full p-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl flex items-center justify-center gap-3 hover:from-green-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full p-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl flex items-center justify-center gap-3 hover:from-green-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl"
                 >
                   <Share2 className="h-6 w-6" />
                   <div className="text-left">
@@ -1101,7 +1203,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
             </div>
 
             {/* অবস্থান ভিত্তিক তথ্য */}
-            <div className="bangladeshi-card p-6">
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-red-200">
               <div className="flex items-center gap-3 mb-6">
                 <Target className="h-6 w-6 text-red-600" />
                 <h2 className="text-xl font-bold text-red-900">
@@ -1110,60 +1212,47 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
               </div>
 
               <div className="space-y-4">
-                {userLocation ? (
+                {userLocation || selectedManualDistrict ? (
                   <>
                     <div className="p-3 bg-red-50 rounded-lg">
                       <p className="text-sm text-red-600 mb-1">
                         নিকটস্থ আশ্রয়কেন্দ্র
                       </p>
-                      {nearbyFacilities.find((f) =>
-                        f.type.includes("শেল্টার")
+                      {nearbyFacilities.find(
+                        (f) =>
+                          f.type.includes("শেল্টার") ||
+                          f.type.includes("সাইক্লোন"),
                       ) ? (
                         <p className="font-medium text-red-900">
                           {
-                            nearbyFacilities.find((f) =>
-                              f.type.includes("শেল্টার")
+                            nearbyFacilities.find(
+                              (f) =>
+                                f.type.includes("শেল্টার") ||
+                                f.type.includes("সাইক্লোন"),
                             )?.name
                           }
                         </p>
                       ) : (
-                        <p className="text-red-700">শনাক্ত করা যায়নি</p>
+                        <p className="text-red-700">
+                          স্থানীয় স্কুল ভবন অথবা ইউনিয়ন পরিষদ
+                        </p>
                       )}
                     </div>
 
                     <div className="p-3 bg-blue-50 rounded-lg">
                       <p className="text-sm text-blue-600 mb-1">
-                        নিকটস্থ খাদ্য গুদাম
+                        জরুরি পরামর্শ
                       </p>
-                      {nearbyFacilities.find((f) =>
-                        f.type.includes("খাদ্য")
-                      ) ? (
-                        <p className="font-medium text-blue-900">
-                          {
-                            nearbyFacilities.find((f) =>
-                              f.type.includes("খাদ্য")
-                            )?.name
-                          }
-                        </p>
-                      ) : (
-                        <p className="text-blue-700">শনাক্ত করা যায়নি</p>
-                      )}
+                      <p className="font-medium text-blue-900">
+                        শান্ত থাকুন এবং নিরাপদ স্থানে যান
+                      </p>
                     </div>
 
                     <div className="p-3 bg-green-50 rounded-lg">
-                      <p className="text-sm text-green-600 mb-1">
-                        নিকটস্থ পশু চিকিৎসা
+                      <p className="text-sm text-green-600 mb-1">জরুরি নম্বর</p>
+                      <p className="font-medium text-green-900">
+                        জাতীয় জরুরি: ৯৯৯ | অ্যাম্বুলেন্স: ১০৬
                       </p>
-                      {nearbyFacilities.find((f) => f.type.includes("পশু")) ? (
-                        <p className="font-medium text-green-900">
-                          {
-                            nearbyFacilities.find((f) => f.type.includes("পশু"))
-                              ?.name
-                          }
-                        </p>
-                      ) : (
-                        <p className="text-green-700">শনাক্ত করা যায়নি</p>
-                      )}
                     </div>
                   </>
                 ) : (
@@ -1177,7 +1266,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
             </div>
 
             {/* শেয়ার অপশন */}
-            <div className="bangladeshi-card p-6">
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-amber-200">
               <div className="flex items-center gap-3 mb-6">
                 <Share2 className="h-6 w-6 text-amber-600" />
                 <h2 className="text-xl font-bold text-amber-900">
@@ -1196,9 +1285,9 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                     const url = window.location.href;
                     window.open(
                       `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-                        url
+                        url,
                       )}`,
-                      "_blank"
+                      "_blank",
                     );
                   }}
                   className="p-3 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
@@ -1211,9 +1300,9 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                     const url = window.location.href;
                     window.open(
                       `https://wa.me/?text=${encodeURIComponent(
-                        text + " " + url
+                        text + " " + url,
                       )}`,
-                      "_blank"
+                      "_blank",
                     );
                   }}
                   className="p-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
@@ -1227,7 +1316,7 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                       window.location.href;
                     window.open(
                       `sms:?body=${encodeURIComponent(text)}`,
-                      "_blank"
+                      "_blank",
                     );
                   }}
                   className="p-3 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
@@ -1266,10 +1355,11 @@ ${userLocation.address || "অবস্থান শনাক্ত করা �
                 weekday: "long",
               })}
             </p>
-            {userLocation && (
+            {(userLocation || selectedManualDistrict) && (
               <p className="text-xs mt-2 text-gray-600">
-                আপনার অবস্থান: {userLocation.lat.toFixed(4)},{" "}
-                {userLocation.lon.toFixed(4)}
+                {userLocation
+                  ? `আপনার অবস্থান: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`
+                  : `নির্বাচিত জেলা: ${selectedManualDistrict?.district}, ${selectedManualDistrict?.division}`}
               </p>
             )}
           </div>

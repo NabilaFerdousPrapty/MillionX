@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     if (!lat || !lon) {
       return NextResponse.json(
         { error: "অক্ষাংশ ও দ্রাঘিমাংশ প্রয়োজন" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       lat,
       lon,
       weatherData,
-      locationData
+      locationData,
     );
 
     return NextResponse.json(floodRisk);
@@ -200,7 +200,7 @@ function getMockLocationName(lat: number, lon: number): string {
 
   for (const loc of locations) {
     const dist = Math.sqrt(
-      Math.pow(lat - loc.lat, 2) + Math.pow(lon - loc.lon, 2)
+      Math.pow(lat - loc.lat, 2) + Math.pow(lon - loc.lon, 2),
     );
     if (dist < minDist) {
       minDist = dist;
@@ -253,7 +253,7 @@ async function calculateFloodRisk(
   lat: number,
   lon: number,
   weatherData: any,
-  locationData: any
+  locationData: any,
 ): Promise<FloodRiskResponse> {
   const { weather, forecast } = weatherData;
 
@@ -311,7 +311,7 @@ async function calculateFloodRisk(
   const recommendations = generateRecommendations(
     riskLevel,
     precipitation,
-    elevation
+    elevation,
   );
 
   // Generate warnings
@@ -350,7 +350,7 @@ function getNearestRiver(lat: number, lon: number) {
 
   for (const river of BANGLADESH_RIVERS) {
     const dist = Math.sqrt(
-      Math.pow(lat - river.lat, 2) + Math.pow(lon - river.lon, 2)
+      Math.pow(lat - river.lat, 2) + Math.pow(lon - river.lon, 2),
     );
     if (dist < minDist) {
       minDist = dist;
@@ -395,7 +395,7 @@ function getNextUpdateTime(): string {
 function generateRecommendations(
   riskLevel: string,
   precipitation: number,
-  elevation: number
+  elevation: number,
 ): string[] {
   const recommendations = [];
 
