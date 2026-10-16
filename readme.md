@@ -295,6 +295,7 @@ Farmer Devices (Mobile + Tablet + Feature Phones)
 - DeepSeek AI Platform
 - OpenWeatherMap
 - Google for Startups
+- Meta AI 
 
 ### **Community**
 
