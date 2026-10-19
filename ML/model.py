@@ -1837,7 +1837,7 @@ print("   # Access models:")
 print("   xgb_model = model_package['xgb_model']")
 print("   lstm_model = model_package['lstm_model']")
 print("   unet_model = model_package['unet_model']")
-print("   scaler = model_package['scaler_lstm']")
+print("   scaler = model_package['scaler_lstm']")S
 print("   feature_cols = model_package['feature_cols']")
 print("")
 print("📋 Required dependencies for backend:")
